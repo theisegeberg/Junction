@@ -1,4 +1,7 @@
 # Junction
+A graceful layered try - refresh - retry library for OAuth and the likes.
+
+---
 
 This library solves the problem posed OAuth style flows where multiple layers of retrying needs to happen in concert.
 
@@ -8,8 +11,17 @@ The solution provided here gives the following benefits:
 1. Full chain retry and resume: If a call fails, then it can refresh the access token with the refresh token, and then retry the call. If the refresh call fails, it can update the refresh token with a new login from the user, and retry all the way down.
 2. Full concurrent support: If multiple calls all fail at their updates simultaneously, only one refresh will be attempted.
 3. Multi-layer retry support: Multiple dependencies can be nested, with support for the child dependencies being reset when a parent dependency is updated. 
+4. No escaping closures: No closures are ever stored, so it's safe to use `self` and anything else here.
+
+The solution provided here has one basice premise: `DependentRunner`. This is an object which can run code and provide some dependency to it. Essentially it is two closures, one closure which will perform the core task, and another that can provide the dependency if it's missing.
+
+Actor provided isolation is what enables the code to be so relatively small. Most of the code revolves around providing a semaphore-like environment for it to run in.
+
+`DependentRunner` is ths core functionality, but a more specific implementation is done in `OAuthDependentRunner` where two `DependentRunner`'s are used in unison to provide the OAuth dance with grace.
 
 The test target has a fake OAuth server to test the functionality.
+
+## Example usage
 
 ```Swift
 let backend = FakeOauth()
