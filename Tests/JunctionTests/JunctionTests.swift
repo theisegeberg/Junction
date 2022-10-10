@@ -59,9 +59,11 @@ final class JunctionTests: XCTestCase {
                     case .output:
                         await counter.increment()
                     case .updateFailed:
-                        fatalError()
+                        fatalError("Update failed")
                     case .otherError(let error):
                         fatalError(error.localizedDescription)
+                    case .timeout:
+                        fatalError("Timed out")
                 }
             }
         }
@@ -109,9 +111,11 @@ final class JunctionTests: XCTestCase {
                     case .output:
                         await counter.increment()
                     case .updateFailed:
-                        fatalError()
+                        fatalError("Update failed")
                     case .otherError(let error):
                         fatalError(error.localizedDescription)
+                    case .timeout:
+                        fatalError("Timed out")
                 }
             }
         }

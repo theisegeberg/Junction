@@ -8,16 +8,19 @@ This library solves the problem posed OAuth style flows where multiple layers of
 In OAuth there is some sort of login that will produce an authorization code. The authorization code can be exchanged for a refresh token. And this refresh token can be used to make short lived access tokens. An access token can be used to access resources from a server.
 
 The solution provided here gives the following benefits:
-1. Full chain retry and resume: If a call fails, then it can refresh the access token with the refresh token, and then retry the call. If the refresh call fails, it can update the refresh token with a new login from the user, and retry all the way down.
+1. Full chain retry and resume for OAuth: If a call fails, then it can refresh the access token with the refresh token, and then retry the call. If the refresh call fails, it can update the refresh token with a new login from the user, and retry all the way down.
 2. Full concurrent support: If multiple calls all fail at their updates simultaneously, only one refresh will be attempted.
 3. Multi-layer retry support: Multiple dependencies can be nested, with support for the child dependencies being reset when a parent dependency is updated. 
-4. No escaping closures: No closures are ever stored, so it's safe to use `self` and anything else here.
+4. Zero capture: No closures are ever stored, so it's safe to use `self` and anything else here.
+5. Unflavored (tasteless?): No strict reference to any transport layer concepts like HTTPS. No references to encodings like JSON.
+6. Location agnostic: Can be placed at either the top: Where the call is being performed closer to the outer edge of the code. Or hidden away at the inner core of the logic that needs to be rerouted. Doesn't provide any framework, just a few concepts that wraps other code.
+7. Rugged: Can start from a point of any existing dependencies. Even a complex scenario like having an outer, middle and inner dependency, where only the middle is known in advance, can be started easily.
 
 The solution provided here has one basice premise: `DependentRunner`. This is an object which can run code and provide some dependency to it. Essentially it is two closures, one closure which will perform the core task, and another that can provide the dependency if it's missing.
 
 Actor provided isolation is what enables the code to be so relatively small. Most of the code revolves around providing a semaphore-like environment for it to run in.
 
-`DependentRunner` is ths core functionality, but a more specific implementation is done in `OAuthDependentRunner` where two `DependentRunner`'s are used in unison to provide the OAuth dance with grace.
+`DependentRunner` is ths core functionality, but a more specific implementation is done in `OAuthDependentRunner` where two `DependentRunner`'s are used in unison to provide the OAuth dance with grace. `DependentRunner` is intended to always be wrapped in a more concrete type that erases all the generics with concrete types (perhaps keeping the widely used `Output` generic).
 
 The test target has a fake OAuth server to test the functionality.
 

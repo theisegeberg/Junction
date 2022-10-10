@@ -21,6 +21,7 @@ public enum UpdateResult<Dependency> {
 public enum RunResult<Output> {
     case output(Output)
     case updateFailed
+    case timeout
     case otherError(Error)
     
     public func map<T>(_ f:(Output) -> T) -> RunResult<T> {
@@ -31,6 +32,8 @@ public enum RunResult<Output> {
                 return .updateFailed
             case .otherError(let error):
                 return .otherError(error)
+            case .timeout:
+                return .timeout
         }
     }
     
@@ -44,29 +47,38 @@ public enum RunResult<Output> {
                         return .updateFailed
                     case .otherError(let error):
                         return .otherError(error)
+                    case .timeout:
+                        return .timeout
                 }
             case .updateFailed:
                 return .updateFailed
             case .otherError(let error):
                 return .otherError(error)
+            case .timeout:
+                return .timeout
+
         }
     }
     
 }
 
-public protocol Resettable {
+public protocol ResettableRunner {
     func reset() async
 }
 
-public actor DependentRunner<Dependency>:Resettable {
+public actor DependentRunner<Dependency>:ResettableRunner {
     
-    var lockActive:Bool = false
-    var currentLock:Int = 0
-    var updateFailed:Bool = false
-    var dependency:Dependency?
+    private var lockActive:Bool = false
+    private var currentLock:Int = 0
+    private var updateFailed:Bool = false
+    private var dependency:Dependency?
+    private var threadSleep:UInt64
+    private var timeout:TimeInterval
     
-    public init(dependency:Dependency? = nil) {
+    public init(dependency:Dependency? = nil, threadSleep:UInt64 = 100_000_000, timeout:TimeInterval = 10) {
         self.dependency = dependency
+        self.threadSleep = threadSleep
+        self.timeout = timeout
     }
     
     public func reset() {
@@ -77,23 +89,29 @@ public actor DependentRunner<Dependency>:Resettable {
     }
     
     public func run<Output>(
-        childRunner:(any Resettable)? = nil,
+        childRunner:(any ResettableRunner)? = nil,
         task:(_ dependency:Dependency) async throws -> (TaskResult<Output>),
-        updateDependency:() async throws -> (UpdateResult<Dependency>)
+        updateDependency:() async throws -> (UpdateResult<Dependency>),
+        started:Date = .init()
     ) async -> RunResult<Output> {
         
         while lockActive {
             if let stallResult:RunResult<Output> = await stall() {
                 return stallResult
             }
+            if Date().timeIntervalSince(started) > timeout {
+                return .timeout
+            }
         }
         
-        // No dependency present
+        
+        
         guard let dependency else {
             return await update(
                 childRunner: childRunner,
                 task: task,
-                updateDependency: updateDependency
+                updateDependency: updateDependency,
+                started: started
             )
         }
         
@@ -101,14 +119,15 @@ public actor DependentRunner<Dependency>:Resettable {
             dependency: dependency,
             childRunner: childRunner,
             task: task,
-            updateDependency: updateDependency
+            updateDependency: updateDependency,
+            started: started
         )
         
     }
     
-    func stall<Output>() async -> RunResult<Output>? {
+    private func stall<Output>() async -> RunResult<Output>? {
         do {
-            try await Task.sleep(nanoseconds: 50_000_000)
+            try await Task.sleep(nanoseconds: threadSleep)
         } catch {
             return .otherError(error)
         }
@@ -119,11 +138,11 @@ public actor DependentRunner<Dependency>:Resettable {
         return nil
     }
     
-    /// Missing dependency
-    func update<Output>(
-        childRunner:(any Resettable)? = nil,
+    private func update<Output>(
+        childRunner:(any ResettableRunner)? = nil,
         task:(_ dependency:Dependency) async throws -> (TaskResult<Output>),
-        updateDependency:() async throws -> (UpdateResult<Dependency>)
+        updateDependency:() async throws -> (UpdateResult<Dependency>),
+        started: Date
     ) async -> RunResult<Output> {
         self.lockActive = true
         if self.currentLock == Int.max { self.currentLock = 0 }
@@ -131,13 +150,14 @@ public actor DependentRunner<Dependency>:Resettable {
         do {
             switch try await updateDependency() {
                 case .updatedDependency(let updatedDepency):
-                    await childRunner?.reset() // Reset the child runner because the outer dependency is now cleared
+                    await childRunner?.reset()
                     self.dependency = updatedDepency
                     self.lockActive = false
                     return await run(
                         childRunner: childRunner,
                         task: task,
-                        updateDependency: updateDependency
+                        updateDependency: updateDependency,
+                        started: started
                     )
                 case .updateFailed:
                     self.updateFailed = true
@@ -148,12 +168,12 @@ public actor DependentRunner<Dependency>:Resettable {
         }
     }
     
-    /// Dependency exist
-    func runWithDependency<Output>(
+    private func runWithDependency<Output>(
         dependency:Dependency,
-        childRunner:(any Resettable)? = nil,
+        childRunner:(any ResettableRunner)? = nil,
         task:(_ dependency:Dependency) async throws -> (TaskResult<Output>),
-        updateDependency:() async throws -> (UpdateResult<Dependency>)
+        updateDependency:() async throws -> (UpdateResult<Dependency>),
+        started: Date
     ) async -> RunResult<Output> {
         do {
             let lockAtRun = self.currentLock
@@ -162,7 +182,12 @@ public actor DependentRunner<Dependency>:Resettable {
                     if lockAtRun == currentLock {
                         self.dependency = nil
                     }
-                    return await run(childRunner: childRunner, task: task, updateDependency: updateDependency)
+                    return await run(
+                        childRunner: childRunner,
+                        task: task,
+                        updateDependency: updateDependency,
+                        started: started
+                    )
                 case .output(let output):
                     return .output(output)
             }
