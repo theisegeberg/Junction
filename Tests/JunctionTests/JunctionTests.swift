@@ -27,9 +27,9 @@ final class JunctionTests: XCTestCase {
                         let res = await backend.getResource(clientAccessToken: accessDependency.access)
                         switch res {
                             case .unauthorised:
-                                return .badDependency
+                                return .dependencyRequiresRefresh
                             case .ok(let string):
-                                return .output(string)
+                                return .success(string)
                             case .updatedToken:
                                 fatalError()
                         }
@@ -37,28 +37,28 @@ final class JunctionTests: XCTestCase {
                         let res = await backend.refresh(clientRefreshToken: refreshDependency.refresh)
                         switch res {
                             case .unauthorised:
-                                return UpdateResult.updateFailed
+                                return RefreshResult.failedRefresh
                             case .ok:
                                 fatalError()
                             case .updatedToken(let uuid):
-                                return UpdateResult.updatedDependency(Deppie(access: uuid))
+                                return RefreshResult.refreshedDependency(Deppie(access: uuid))
                         }
                     }
-                    if case .updateFailed = innerResult {
-                        return .badDependency
+                    if case .failedRefresh = innerResult {
+                        return .dependencyRequiresRefresh
                     }
-                    return .output(innerResult)
+                    return .success(innerResult)
                     
                     
                     
                 } updateDependency: {
                     let rDeppie = await backend.login(password: "PWD")
-                    return UpdateResult.updatedDependency(.init(refresh: rDeppie.token))
+                    return RefreshResult.refreshedDependency(.init(refresh: rDeppie.token))
                 }
                 switch result {
-                    case .output:
+                    case .success:
                         await counter.increment()
-                    case .updateFailed:
+                    case .failedRefresh:
                         fatalError("Update failed")
                     case .otherError(let error):
                         fatalError(error.localizedDescription)
@@ -68,7 +68,7 @@ final class JunctionTests: XCTestCase {
             }
         }
         try await Task.sleep(nanoseconds: maxTime + 5_000_000_000)
-        print(await counter.getI())
+        print(await counter.getCount())
         
     }
     
@@ -80,7 +80,11 @@ final class JunctionTests: XCTestCase {
         
         let maxTime:UInt64 = 10_000_000_000
         
-        let oauthRunner = OAuthDependentRunner()
+        struct Token {
+            let value:UUID
+        }
+        
+        let oauthRunner = OAuthDependentRunner<Token,Token>()
         
         for _ in 0..<200 {
             Task {
@@ -88,29 +92,29 @@ final class JunctionTests: XCTestCase {
                 let result:RunResult<String> = await oauthRunner.run { accessDependency in
                     switch await backend.getResource(clientAccessToken: accessDependency.value) {
                         case .unauthorised:
-                            return .badDependency
+                            return .dependencyRequiresRefresh
                         case .ok(let string):
-                            return .output(string)
+                            return .success(string)
                         case .updatedToken:
                             fatalError()
                     }
                 } updateAccessToken: { refreshDependency in
                     switch await backend.refresh(clientRefreshToken: refreshDependency.value) {
                         case .unauthorised:
-                            return UpdateResult.updateFailed
+                            return RefreshResult.failedRefresh
                         case .ok:
                             fatalError()
                         case .updatedToken(let uuid):
-                            return UpdateResult.updatedDependency(.init(value: uuid))
+                            return RefreshResult.refreshedDependency(.init(value: uuid))
                     }
                 } updateRefreshToken: {
                     let refreshToken = await backend.login(password: "PWD")
-                    return UpdateResult.updatedDependency(.init(value: refreshToken.token))
+                    return RefreshResult.refreshedDependency(.init(value: refreshToken.token))
                 }
                 switch result {
-                    case .output:
+                    case .success:
                         await counter.increment()
-                    case .updateFailed:
+                    case .failedRefresh:
                         fatalError("Update failed")
                     case .otherError(let error):
                         fatalError(error.localizedDescription)
@@ -120,7 +124,7 @@ final class JunctionTests: XCTestCase {
             }
         }
         try await Task.sleep(nanoseconds: maxTime + 5_000_000_000)
-        print(await counter.getI())
+        print(await counter.getCount())
         
     }
     

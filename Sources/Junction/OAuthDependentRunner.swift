@@ -7,15 +7,7 @@
 
 import Foundation
 
-class OAuthDependentRunner {
-    
-    struct RefreshToken {
-        let value:UUID
-    }
-    
-    struct AccessToken {
-        let value:UUID
-    }
+class OAuthDependentRunner<RefreshToken,AccessToken> {
     
     let refreshRunner:DependentRunner<RefreshToken>
     let accessRunner:DependentRunner<AccessToken>
@@ -28,26 +20,27 @@ class OAuthDependentRunner {
         self.accessRunner = accessRunner
     }
     
-    func run<Output>(
-        task: (AccessToken) async -> TaskResult<Output>,
-        updateAccessToken: (RefreshToken) async -> UpdateResult<AccessToken>,
-        updateRefreshToken: () async -> UpdateResult<RefreshToken>
-    ) async -> RunResult<Output> {
-        let result:RunResult<RunResult<Output>> = await refreshRunner.run(childRunner: accessRunner) { refreshDependency in
-            let innerResult:RunResult<Output> = await accessRunner.run { accessDependency in
-                return await task(accessDependency)
+    func run<Success>(
+        task: (AccessToken) async -> TaskResult<Success>,
+        updateAccessToken: (RefreshToken) async -> RefreshResult<AccessToken>,
+        updateRefreshToken: () async -> RefreshResult<RefreshToken>
+    ) async -> RunResult<Success> {
+        await refreshRunner.run(childRunner: accessRunner) {
+            refreshDependency in
+            let innerResult = await accessRunner.run {
+                accessDependency in
+                await task(accessDependency)
             } updateDependency: {
-                return await updateAccessToken(refreshDependency)
+                await updateAccessToken(refreshDependency)
             }
-            if case .updateFailed = innerResult {
-                return .badDependency
+            if case .failedRefresh = innerResult {
+                return .dependencyRequiresRefresh
             }
-            return .output(innerResult)
+            return .success(innerResult)
         } updateDependency: {
             await updateRefreshToken()
         }
-        return result.flatMap { $0 }
-
+        .flatMap { $0 }
     }
     
     

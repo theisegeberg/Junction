@@ -11,10 +11,14 @@ The solution provided here gives the following benefits:
 1. Full chain retry and resume for OAuth: If a call fails, then it can refresh the access token with the refresh token, and then retry the call. If the refresh call fails, it can update the refresh token with a new login from the user, and retry all the way down.
 2. Full concurrent support: If multiple calls all fail at their updates simultaneously, only one refresh will be attempted.
 3. Multi-layer retry support: Multiple dependencies can be nested, with support for the child dependencies being reset when a parent dependency is updated. 
-4. Zero capture: No closures are ever stored, so it's safe to use `self` and anything else here.
-5. Unflavored (tasteless?): No strict reference to any transport layer concepts like HTTPS. No references to encodings like JSON.
+4. Capture safe: No closures are ever stored, so it's safe to use `self` and anything else here.
+5. Unassuming: No strict reference to any transport layer concepts like HTTPS. And no references to encoding schemes like JSON.
 6. Location agnostic: Can be placed at either the top: Where the call is being performed closer to the outer edge of the code. Or hidden away at the inner core of the logic that needs to be rerouted. Doesn't provide any framework, just a few concepts that wraps other code.
-7. Rugged: Can start from a point of any existing dependencies. Even a complex scenario like having an outer, middle and inner dependency, where only the middle is known in advance, can be started easily.
+7. Flexible: Can start from a point of any existing dependencies. Even a complex scenario like having an outer, middle and inner dependency, where only the middle is known in advance, can be started easily.
+8. Dead simple: Tiny code base that can easily be moved into your project without any problems.
+9. Legacy support: Supports Catalina and iOS 13 and forward.
+
+---
 
 The solution provided here has one basice premise: `DependentRunner`. This is an object which can run code and provide some dependency to it. Essentially it is two closures, one closure which will perform the core task, and another that can provide the dependency if it's missing.
 
