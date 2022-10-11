@@ -42,6 +42,16 @@ public actor FakeOauth {
         return refreshToken
     }
     
+    public func loginWithAccess(password:String) async -> (TimedToken, TimedToken) {
+        print("🦑 LOGIN CALLED")
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000...200_000_000))
+        let refreshToken = TimedToken(timeToLive: 3)
+        let accessToken = TimedToken(timeToLive: 0.5)
+        self.refreshToken = refreshToken
+        self.accessToken = accessToken
+        return (refreshToken, accessToken)
+    }
+    
     public func logout() {
         print("🦑 LOGOUT CALLED")
         self.refreshToken = nil

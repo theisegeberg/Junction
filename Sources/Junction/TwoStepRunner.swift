@@ -7,7 +7,7 @@
 
 import Foundation
 
-class TwoStepRunner<OuterDependency,InnerDependency> {
+struct TwoStepRunner<OuterDependency,InnerDependency> {
     
     let outerRunner:DependentRunner<OuterDependency>
     let innerRunner:DependentRunner<InnerDependency>
@@ -38,11 +38,10 @@ class TwoStepRunner<OuterDependency,InnerDependency> {
             }
             return .success(innerResult)
         } updateDependency: {
+            let result = await updateOuter()
             await innerRunner.reset()
-            return await updateOuter()
+            return result
         }
         .flatMap { $0 }
     }
-    
-    
 }

@@ -81,10 +81,17 @@ public actor DependentRunner<Dependency> {
     }
     
     public func reset() {
-        lockActive = false
         currentLock = 0
-        refreshFailed = false
         dependency = nil
+        refreshFailed = false
+        lockActive = false
+    }
+    
+    public func refresh(dependency freshDependency:Dependency) {
+        incrementLock()
+        refreshFailed = false
+        dependency = freshDependency
+        lockActive = false
     }
     
     public func run<Success>(
@@ -111,12 +118,14 @@ public actor DependentRunner<Dependency> {
         
         guard let dependency else {
             self.lockActive = true
-            if self.currentLock == Int.max { self.currentLock = 0 }
-            self.currentLock = self.currentLock + 1
+            self.incrementLock()
             do {
                 switch try await updateDependency() {
                     case .refreshedDependency(let updatedDepency):
-                        self.dependency = updatedDepency
+                        if self.lockActive == true {
+                            // Only update the dependency if the lock is still active.
+                            self.dependency = updatedDepency
+                        }
                         self.lockActive = false
                         return await run(
                             task: task,
@@ -137,7 +146,7 @@ public actor DependentRunner<Dependency> {
             let lockAtRun = self.currentLock
             switch try await task(dependency) {
                 case .dependencyRequiresRefresh:
-                    if lockAtRun == currentLock {
+                    if lockAtRun == self.currentLock {
                         self.dependency = nil
                     }
                     return await run(
@@ -153,6 +162,11 @@ public actor DependentRunner<Dependency> {
             return .otherError(error)
         }
         
+    }
+    
+    func incrementLock() {
+        if self.currentLock == Int.max { self.currentLock = 0 }
+        self.currentLock = self.currentLock + 1
     }
     
 }
