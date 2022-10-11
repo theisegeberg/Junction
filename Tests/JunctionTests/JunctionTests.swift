@@ -22,7 +22,7 @@ final class JunctionTests: XCTestCase {
         for _ in 0..<200 {
             Task {
                 try! await Task.sleep(nanoseconds: UInt64.random(in: 0..<maxTime))
-                let result:RunResult<RunResult<String>> = await refreshRunner.run(childRunner: accessRunner) { refreshDependency in
+                let result:RunResult<RunResult<String>> = await refreshRunner.run { refreshDependency in
                     let innerResult:RunResult<String> = await accessRunner.run { accessDependency in
                         let res = await backend.getResource(clientAccessToken: accessDependency.access)
                         switch res {
@@ -52,6 +52,7 @@ final class JunctionTests: XCTestCase {
                     
                     
                 } updateDependency: {
+                    await accessRunner.reset()
                     let rDeppie = await backend.login(password: "PWD")
                     return RefreshResult.refreshedDependency(.init(refresh: rDeppie.token))
                 }
@@ -84,7 +85,7 @@ final class JunctionTests: XCTestCase {
             let value:UUID
         }
         
-        let oauthRunner = OAuthDependentRunner<Token,Token>()
+        let oauthRunner = TwoStepRunner<Token,Token>()
         
         for _ in 0..<200 {
             Task {
@@ -98,7 +99,7 @@ final class JunctionTests: XCTestCase {
                         case .updatedToken:
                             fatalError()
                     }
-                } updateAccessToken: { refreshDependency in
+                } updateInner: { refreshDependency in
                     switch await backend.refresh(clientRefreshToken: refreshDependency.value) {
                         case .unauthorised:
                             return RefreshResult.failedRefresh
@@ -107,7 +108,7 @@ final class JunctionTests: XCTestCase {
                         case .updatedToken(let uuid):
                             return RefreshResult.refreshedDependency(.init(value: uuid))
                     }
-                } updateRefreshToken: {
+                } updateOuter: {
                     let refreshToken = await backend.login(password: "PWD")
                     return RefreshResult.refreshedDependency(.init(value: refreshToken.token))
                 }
