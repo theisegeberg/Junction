@@ -7,84 +7,111 @@ public enum FakeResponse {
     case updatedToken(UUID)
 }
 
-public struct TimedToken:Codable {
-    public let token:UUID
-    private let created:Date
-    private let timeToLive:TimeInterval
-    
-    init(token: UUID = .init(), created: Date = .init(), timeToLive:TimeInterval = 0.3) {
+public struct TimedToken: Codable {
+    public let token: UUID
+    private let created: Date
+    private let timeToLive: TimeInterval
+
+    init(token: UUID = .init(), created: Date = .init(), timeToLive: TimeInterval = 0.3) {
         self.token = token
         self.created = created
         self.timeToLive = timeToLive
     }
-    
-    private var isValid:Bool {
+
+    private var isValid: Bool {
         created.distance(to: .init()) < timeToLive
     }
-    
-    func validate(clientToken:UUID) -> Bool {
-        isValid && self.token == clientToken
+
+    func validate(clientToken: UUID) -> Bool {
+        isValid && token == clientToken
     }
 }
 
-public actor FakeOauth {
-    
-    var refreshToken:TimedToken? = nil
-    var accessToken:TimedToken? = nil
-    var password:String = "PWD"
-    
-    public func login(password:String) async -> TimedToken {
-        print("🦑 LOGIN CALLED")
-        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000...200_000_000))
-        let refreshToken:TimedToken = TimedToken(timeToLive: 3)
-        self.refreshToken = refreshToken
-        self.accessToken = nil
-        return refreshToken
+actor Logger {
+    var log: String = ""
+    func log(_ message: String) {
+        log.append("\n\(message)")
     }
     
-    public func loginWithAccess(password:String) async -> (TimedToken, TimedToken) {
-        print("🦑 LOGIN CALLED")
-        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000...200_000_000))
+    func printLog() {
+        print(log)
+    }
+}
+
+public class FakeOauth {
+    var refreshToken: TimedToken?
+    var accessToken: TimedToken?
+    var password: String = "PWD"
+    let logger:Logger = .init()
+    
+    public init() {}
+
+    func log(_ message: String) {
+        Task {
+            await logger.log(message)
+        }
+    }
+
+    public func login(password _: String) async -> TimedToken {
+        log("🦑 LOGIN CALLED")
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
+        let refreshToken = TimedToken(timeToLive: 3)
+        self.refreshToken = refreshToken
+        accessToken = nil
+        log("🦑 LOGGED IN")
+        return refreshToken
+    }
+
+    public func loginWithAccess(password _: String) async -> (TimedToken, TimedToken) {
+        log("🦑 LOGIN CALLED")
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 200_000_000))
         let refreshToken = TimedToken(timeToLive: 3)
         let accessToken = TimedToken(timeToLive: 0.5)
         self.refreshToken = refreshToken
         self.accessToken = accessToken
+        log("🦑 LOGGED IN")
         return (refreshToken, accessToken)
     }
-    
+
     public func logout() {
-        print("🦑 LOGOUT CALLED")
-        self.refreshToken = nil
-        self.accessToken = nil
+        log("🦑 LOGOUT CALLED")
+        refreshToken = nil
+        accessToken = nil
     }
-    
-    public func refresh(clientRefreshToken:UUID) async -> FakeResponse {
-        print("🦑 REFRESH CALLED")
+
+    public func refresh(clientRefreshToken: UUID) async -> FakeResponse {
+        log("🦑 REFRESH CALLED")
         guard let ownRefreshToken = refreshToken,
               ownRefreshToken.validate(clientToken: clientRefreshToken)
         else {
-            print("🦑 REFRESH UNAUTHORISED")
-            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000...200_000_000))
+            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
+            log("🦑 REFRESH UNAUTHORISED")
             return .unauthorised
         }
-        print("🦑 REFRESH NEW ACCESS TOKEN GRANTED")
-        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000...200_000_000))
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
+        log("🦑 REFRESH NEW ACCESS TOKEN GRANTED")
         let newAccessToken = TimedToken()
-        self.accessToken = newAccessToken
+        accessToken = newAccessToken
         return .updatedToken(newAccessToken.token)
     }
-    
-    public func getResource(clientAccessToken:UUID) async -> FakeResponse {
-        print("🦑 RESOURCE CALLED")
+
+    public func getResource(clientAccessToken: UUID) async -> FakeResponse {
+        log("🦑 RESOURCE CALLED")
         guard let ownAcccessToken = accessToken,
-              ownAcccessToken.validate(clientToken: clientAccessToken) else {
-            print("🦑 RESOURCE UNAUTHORISED")
-            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000...200_000_000))
+              ownAcccessToken.validate(clientToken: clientAccessToken)
+        else {
+            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
+            log("🦑 RESOURCE UNAUTHORISED")
             return .unauthorised
         }
-        print("🦑 RESOURCE OK")
-        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000...200_000_000))
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 200_000_000))
+        log("🦑 RESOURCE OK")
         return .ok("<html><body>Hello world!</body></html>")
     }
-    
+
+    public func printLog() {
+        Task {
+            await logger.printLog()
+        }
+    }
 }

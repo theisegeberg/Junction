@@ -7,11 +7,10 @@
 
 import Foundation
 
-struct TwoStepRunner<OuterDependency,InnerDependency> {
-    
-    let outerRunner:DependentRunner<OuterDependency>
-    let innerRunner:DependentRunner<InnerDependency>
-    
+struct TwoStepRunner<OuterDependency, InnerDependency> {
+    let outerRunner: DependentRunner<OuterDependency>
+    let innerRunner: DependentRunner<InnerDependency>
+
     init(
         outerRunner: DependentRunner<OuterDependency> = .init(),
         innerRunner: DependentRunner<InnerDependency> = .init()
@@ -19,7 +18,7 @@ struct TwoStepRunner<OuterDependency,InnerDependency> {
         self.outerRunner = outerRunner
         self.innerRunner = innerRunner
     }
-    
+
     func run<Success>(
         _ runBlock: (InnerDependency) async -> TaskResult<Success>,
         updateInner: (OuterDependency) async -> RefreshResult<InnerDependency>,
