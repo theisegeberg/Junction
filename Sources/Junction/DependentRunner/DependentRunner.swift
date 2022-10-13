@@ -1,11 +1,38 @@
 
 import Foundation
 
+/// TODO
+/// currentLock becomes a version count for the dependency
+/// locked, failed and open becomes state
+
 public actor DependentRunner<Dependency> {
-    private var lockActive: Bool = false
-    private var currentLock: Int = 0
-    private var refreshFailed: Bool = false
-    private var dependency: Dependency?
+    
+    private class VersionedDependency {
+        var latest:Dependency?
+        var version:Int
+        
+        init(dependency: Dependency? = nil) {
+            self.latest = dependency
+            self.version = 0
+        }
+        
+        func setDependency(_ dependency:Dependency?) {
+            if self.version == Int.max {
+                self.version = 0
+            }
+            self.version = version + 1
+            self.latest = dependency
+        }
+    }
+    
+    private enum State {
+        case ready
+        case refreshing
+        case failedRefresh
+    }
+    
+    private var state:State = .ready
+    private var dependency: VersionedDependency
     private var threadSleep: UInt64
     private var defaultTimeout: TimeInterval
 
@@ -14,7 +41,7 @@ public actor DependentRunner<Dependency> {
         threadSleep: UInt64 = 100_000_000,
         defaultTimeout: TimeInterval = 10
     ) {
-        self.dependency = dependency
+        self.dependency = VersionedDependency(dependency: dependency)
         self.threadSleep = threadSleep
         self.defaultTimeout = defaultTimeout
     }
@@ -39,32 +66,31 @@ public actor DependentRunner<Dependency> {
         started: Date,
         timeout: TimeInterval?
     ) async -> RunResult<Success> {
-        while lockActive {
+        while state == .refreshing {
             do {
                 try await Task.sleep(nanoseconds: threadSleep)
             } catch {
                 return .otherError(error)
             }
             await Task.yield()
-            if refreshFailed {
-                return .failedRefresh
-            }
             if Date().timeIntervalSince(started) > (timeout ?? defaultTimeout) {
                 return .timeout
             }
         }
 
-        guard let dependency else {
-            lockActive = true
-            incrementLock()
+        if state == .failedRefresh {
+            return .failedRefresh
+        }
+
+        guard let actualDependency = dependency.latest else {
+            state = .refreshing
             do {
                 switch try await updateDependency() {
-                case let .refreshedDependency(updatedDepency):
-                    if lockActive == true {
-                        // Only update the dependency if the lock is still active.
-                        self.dependency = updatedDepency
+                case let .refreshedDependency(refreshed):
+                    if state == .refreshing {
+                        self.dependency.setDependency(refreshed)
                     }
-                    lockActive = false
+                    state = .ready
                     return await run(
                         task: task,
                         updateDependency: updateDependency,
@@ -72,7 +98,7 @@ public actor DependentRunner<Dependency> {
                         timeout: timeout
                     )
                 case .failedRefresh:
-                    refreshFailed = true
+                    state = .failedRefresh
                     return .failedRefresh
                 }
             } catch {
@@ -81,14 +107,14 @@ public actor DependentRunner<Dependency> {
         }
 
         do {
-            let lockAtRun = currentLock
-            switch try await task(dependency) {
+            let versionAtRun = dependency.version
+            switch try await task(actualDependency) {
             case .dependencyRequiresRefresh:
                 /// If  the is the same that means that no other process changed the dependency
                 /// while we were performing our task. If the lock changed then another process
                 /// changed it, and we should just move on.
-                if lockAtRun == currentLock {
-                    self.dependency = nil
+                if versionAtRun == dependency.version {
+                    self.dependency.setDependency(nil)
                 }
                 return await run(
                     task: task,
@@ -105,21 +131,14 @@ public actor DependentRunner<Dependency> {
     }
 
     public func reset() {
-        currentLock = 0
-        dependency = nil
-        refreshFailed = false
-        lockActive = false
+        dependency.version = 0
+        dependency.latest = nil
+        state = .ready
     }
 
     public func refresh(dependency freshDependency: Dependency) {
-        incrementLock()
-        refreshFailed = false
-        dependency = freshDependency
-        lockActive = false
+        dependency.latest = freshDependency
+        state = .ready
     }
 
-    func incrementLock() {
-        if currentLock == Int.max { currentLock = 0 }
-        currentLock = currentLock + 1
-    }
 }
