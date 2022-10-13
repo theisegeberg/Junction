@@ -22,13 +22,13 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
     public func run<Success>(
         _ context: any OAuthRunnerContext<Success, RefreshToken, AccessToken>
     ) async -> RunResult<Success> {
-        await run(context.run, updateAccessToken: context.updateAccessToken, updateRefreshToken: context.updateRefreshToken)
+        await run(context.run, refreshAccessToken: context.refreshAccessToken, refreshRefreshToken: context.refreshRefreshToken)
     }
 
     public func run<Success>(
         _ runBlock: (AccessToken) async -> TaskResult<Success>,
-        updateAccessToken: (RefreshToken) async -> RefreshResult<AccessToken>,
-        updateRefreshToken: () async -> RefreshResult<RefreshToken>
+        refreshAccessToken: (RefreshToken) async -> RefreshResult<AccessToken>,
+        refreshRefreshToken: () async -> RefreshResult<RefreshToken>
     ) async -> RunResult<Success> {
         await refreshRunner.run {
             refreshDependency in
@@ -36,16 +36,16 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
             let innerResult = await accessRunner.run {
                 accessDependency in
                 await runBlock(accessDependency)
-            } updateDependency: {
-                await updateAccessToken(refreshDependency)
+            } refreshDependency: {
+                await refreshAccessToken(refreshDependency)
             }
             if case .failedRefresh = innerResult {
                 return .dependencyRequiresRefresh
             }
             return .success(innerResult)
 
-        } updateDependency: {
-            switch await updateRefreshToken() {
+        } refreshDependency: {
+            switch await refreshRefreshToken() {
             case .failedRefresh:
                 return .failedRefresh
             case let .refreshedDependency(refreshToken):

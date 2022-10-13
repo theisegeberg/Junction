@@ -1,10 +1,6 @@
 
 import Foundation
 
-/// TODO
-/// currentLock becomes a version count for the dependency
-/// locked, failed and open becomes state
-
 public actor DependentRunner<Dependency> {
     
     private class VersionedDependency {
@@ -45,24 +41,34 @@ public actor DependentRunner<Dependency> {
         self.threadSleep = threadSleep
         self.defaultTimeout = defaultTimeout
     }
-
+    
+    /// Execute the code provided by the context.
+    /// - Parameter context: A context that provides information for running and generating dependencies.
+    /// - Returns: The result of the execution.
     public func run<Success>(
         _ context: any DependentRunnerContext<Success, Dependency>
     ) async -> RunResult<Success> {
-        await run(task: context.run, updateDependency: context.refresh, timeout: context.timeout())
+        await run(task: context.run, refreshDependency: context.refresh, timeout: context.timeout())
     }
-
+    
+    /// Tries to execute a tas that requires a `Dependency`. If the `Dependency` is invalid or missing it
+    /// attempt to run
+    /// - Parameters:
+    ///   - task: <#task description#>
+    ///   - updateDependency: <#updateDependency description#>
+    ///   - timeout: <#timeout description#>
+    /// - Returns: <#description#>
     public func run<Success>(
         task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
-        updateDependency: () async throws -> (RefreshResult<Dependency>),
+        refreshDependency: () async throws -> (RefreshResult<Dependency>),
         timeout: TimeInterval? = nil
     ) async -> RunResult<Success> {
-        await run(task: task, updateDependency: updateDependency, started: .init(), timeout: timeout)
+        await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
     }
 
     private func run<Success>(
         task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
-        updateDependency: () async throws -> (RefreshResult<Dependency>),
+        refreshDependency: () async throws -> (RefreshResult<Dependency>),
         started: Date,
         timeout: TimeInterval?
     ) async -> RunResult<Success> {
@@ -85,7 +91,7 @@ public actor DependentRunner<Dependency> {
         guard let actualDependency = dependency.latest else {
             state = .refreshing
             do {
-                switch try await updateDependency() {
+                switch try await refreshDependency() {
                 case let .refreshedDependency(refreshed):
                     if state == .refreshing {
                         self.dependency.setDependency(refreshed)
@@ -93,7 +99,7 @@ public actor DependentRunner<Dependency> {
                     state = .ready
                     return await run(
                         task: task,
-                        updateDependency: updateDependency,
+                        refreshDependency: refreshDependency,
                         started: started,
                         timeout: timeout
                     )
@@ -118,7 +124,7 @@ public actor DependentRunner<Dependency> {
                 }
                 return await run(
                     task: task,
-                    updateDependency: updateDependency,
+                    refreshDependency: refreshDependency,
                     started: started,
                     timeout: timeout
                 )

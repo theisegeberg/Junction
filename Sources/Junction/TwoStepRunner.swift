@@ -10,23 +10,23 @@ struct TwoStepRunner<OuterDependency, InnerDependency> {
 
     func run<Success>(
         _ runBlock: (InnerDependency) async -> TaskResult<Success>,
-        updateInner: (OuterDependency) async -> RefreshResult<InnerDependency>,
-        updateOuter: () async -> RefreshResult<OuterDependency>
+        refreshInner: (OuterDependency) async -> RefreshResult<InnerDependency>,
+        refreshOuter: () async -> RefreshResult<OuterDependency>
     ) async -> RunResult<Success> {
         await outerRunner.run {
             refreshDependency in
             let innerResult = await innerRunner.run {
                 accessDependency in
                 await runBlock(accessDependency)
-            } updateDependency: {
-                await updateInner(refreshDependency)
+            } refreshDependency: {
+                await refreshInner(refreshDependency)
             }
             if case .failedRefresh = innerResult {
                 return .dependencyRequiresRefresh
             }
             return .success(innerResult)
-        } updateDependency: {
-            let result = await updateOuter()
+        } refreshDependency: {
+            let result = await refreshOuter()
             await innerRunner.reset()
             return result
         }

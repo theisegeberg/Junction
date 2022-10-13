@@ -4,6 +4,6 @@ public protocol OAuthRunnerContext<Success, RefreshToken, AccessToken> {
     associatedtype RefreshToken
     associatedtype AccessToken
     func run(_ accessToken: AccessToken) async -> TaskResult<Success>
-    func updateAccessToken(_ refreshToken: RefreshToken) async -> RefreshResult<AccessToken>
-    func updateRefreshToken() async -> RefreshResult<RefreshToken>
+    func refreshAccessToken(_ refreshToken: RefreshToken) async -> RefreshResult<AccessToken>
+    func refreshRefreshToken() async -> RefreshResult<RefreshToken>
 }
