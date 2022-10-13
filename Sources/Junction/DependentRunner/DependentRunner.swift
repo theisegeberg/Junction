@@ -1,71 +1,5 @@
-//
-//  ReRunner.swift
-//  DepInversionTest
-//
-//  Created by Theis Egeberg on 09/10/2022.
-//
 
 import Foundation
-
-public enum TaskResult<Success> {
-    case success(Success)
-    case dependencyRequiresRefresh
-}
-
-public enum RefreshResult<Dependency> {
-    case refreshedDependency(Dependency)
-    case failedRefresh
-}
-
-public enum RunResult<Success> {
-    case success(Success)
-    case failedRefresh
-    case timeout
-    case otherError(Error)
-
-    public func map<NewSuccess>(_ f: (Success) -> NewSuccess) -> RunResult<NewSuccess> {
-        switch self {
-        case let .success(success):
-            return .success(f(success))
-        case .failedRefresh:
-            return .failedRefresh
-        case let .otherError(error):
-            return .otherError(error)
-        case .timeout:
-            return .timeout
-        }
-    }
-
-    public func flatMap<NewSuccess>(_ f: (Success) -> RunResult<NewSuccess>) -> RunResult<NewSuccess> {
-        switch self {
-        case let .success(success):
-            switch f(success) {
-            case let .success(success):
-                return .success(success)
-            case .failedRefresh:
-                return .failedRefresh
-            case let .otherError(error):
-                return .otherError(error)
-            case .timeout:
-                return .timeout
-            }
-        case .failedRefresh:
-            return .failedRefresh
-        case let .otherError(error):
-            return .otherError(error)
-        case .timeout:
-            return .timeout
-        }
-    }
-}
-
-public protocol DependentRunnerContext<Success, Dependency> {
-    associatedtype Success
-    associatedtype Dependency
-    func run(_ dependency: Dependency) async throws -> (TaskResult<Success>)
-    func refresh() async throws -> (RefreshResult<Dependency>)
-    func timeout() -> TimeInterval?
-}
 
 public actor DependentRunner<Dependency> {
     private var lockActive: Bool = false
@@ -86,11 +20,11 @@ public actor DependentRunner<Dependency> {
     }
 
     public func run<Success>(
-        _ context:any DependentRunnerContext<Success,Dependency>
-    ) async -> RunResult<Success>  {
+        _ context: any DependentRunnerContext<Success, Dependency>
+    ) async -> RunResult<Success> {
         await run(task: context.run, updateDependency: context.refresh, timeout: context.timeout())
     }
-    
+
     public func run<Success>(
         task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
         updateDependency: () async throws -> (RefreshResult<Dependency>),
@@ -98,7 +32,7 @@ public actor DependentRunner<Dependency> {
     ) async -> RunResult<Success> {
         await run(task: task, updateDependency: updateDependency, started: .init(), timeout: timeout)
     }
-    
+
     private func run<Success>(
         task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
         updateDependency: () async throws -> (RefreshResult<Dependency>),
@@ -176,14 +110,14 @@ public actor DependentRunner<Dependency> {
         refreshFailed = false
         lockActive = false
     }
-    
+
     public func refresh(dependency freshDependency: Dependency) {
         incrementLock()
         refreshFailed = false
         dependency = freshDependency
         lockActive = false
     }
-    
+
     func incrementLock() {
         if currentLock == Int.max { currentLock = 0 }
         currentLock = currentLock + 1

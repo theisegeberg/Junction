@@ -127,18 +127,14 @@ final class JunctionTests: XCTestCase {
 
         let maxTime: UInt64 = 10_000_000_000
 
-        struct Token {
-            let value: UUID
-        }
-
-        let oauthRunner = OAuthRunner(threadSleep: 50_000_000, timeout: 10)
+        let oauthRunner = OAuthRunner<UUID, UUID>(threadSleep: 50_000_000, timeout: 10)
 
         for _ in 0 ..< 200 {
             Task {
                 try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
                 let result: RunResult<String> = await oauthRunner.run({
                     accessDependency in
-                    switch await backend.getResource(clientAccessToken: accessDependency.accessToken) {
+                    switch await backend.getResource(clientAccessToken: accessDependency.token) {
                     case .unauthorised:
                         return .dependencyRequiresRefresh
                     case let .ok(string):
@@ -148,23 +144,17 @@ final class JunctionTests: XCTestCase {
                     }
                 }, updateAccessToken: {
                     refreshDependency in
-                    switch await backend.refresh(clientRefreshToken: refreshDependency.refreshToken) {
+                    switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
                     case .unauthorised:
                         return RefreshResult.failedRefresh
                     case .ok:
                         fatalError()
                     case let .updatedToken(uuid):
-                        struct AccessToken: AccessTokenProviding {
-                            var accessToken: UUID
-                        }
-                        return RefreshResult.refreshedDependency(AccessToken(accessToken: uuid))
+                        return RefreshResult.refreshedDependency(.init(token: uuid))
                     }
                 }, updateRefreshToken: {
                     let backendRefreshToken = await backend.login(password: "PWD")
-                    struct RefreshToken: RefreshTokenProviding {
-                        var refreshToken: UUID
-                    }
-                    return RefreshResult.refreshedDependency(RefreshToken(refreshToken: backendRefreshToken.token))
+                    return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: nil))
                 })
                 switch result {
                 case .success:
@@ -189,18 +179,14 @@ final class JunctionTests: XCTestCase {
 
         let maxTime: UInt64 = 10_000_000_000
 
-        struct Token {
-            let value: UUID
-        }
+        let oauthRunner = OAuthRunner<UUID, UUID>(threadSleep: 50_000_000, timeout: 2.2)
 
-        let oauthRunner = OAuthRunner(threadSleep: 50_000_000, timeout: 1.2)
-
-        for _ in 0 ..< 5000 {
+        for _ in 0 ..< 500 {
             Task {
-                try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime / 2))
+                try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
                 let result: RunResult<String> = await oauthRunner.run({
                     accessDependency in
-                    switch await backend.getResource(clientAccessToken: accessDependency.accessToken) {
+                    switch await backend.getResource(clientAccessToken: accessDependency.token) {
                     case .unauthorised:
                         return .dependencyRequiresRefresh
                     case let .ok(string):
@@ -210,27 +196,17 @@ final class JunctionTests: XCTestCase {
                     }
                 }, updateAccessToken: {
                     refreshDependency in
-                    switch await backend.refresh(clientRefreshToken: refreshDependency.refreshToken) {
+                    switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
                     case .unauthorised:
                         return RefreshResult.failedRefresh
                     case .ok:
                         fatalError()
                     case let .updatedToken(uuid):
-                        struct AccessToken: AccessTokenProviding {
-                            var accessToken: UUID
-                        }
-                        return RefreshResult.refreshedDependency(AccessToken(accessToken: uuid))
+                        return RefreshResult.refreshedDependency(.init(token: uuid))
                     }
                 }, updateRefreshToken: {
                     let (backendRefreshToken, backendAccessToken) = await backend.loginWithAccess(password: "PWD")
-                    struct RefreshToken: RefreshTokenProviding, AccessTokenCarrier {
-                        var refreshToken: UUID
-                        var accessToken: AccessTokenProviding
-                    }
-                    struct AccessToken: AccessTokenProviding {
-                        var accessToken: UUID
-                    }
-                    return RefreshResult.refreshedDependency(RefreshToken(refreshToken: backendRefreshToken.token, accessToken: AccessToken(accessToken: backendAccessToken.token)))
+                    return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: .init(token: backendAccessToken.token)))
                 })
                 switch result {
                 case .success:
@@ -245,7 +221,7 @@ final class JunctionTests: XCTestCase {
             }
         }
         try await Task.sleep(nanoseconds: maxTime + 3_000_000_000)
-        //await backend.printLog()
+        backend.printLog()
         print(await counter.getCount())
         print(await timeOutCounter.getCount())
     }

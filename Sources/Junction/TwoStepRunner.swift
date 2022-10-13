@@ -1,22 +1,11 @@
-//
-//  OAuthDependentRunner.swift
-//  DepInversionTest
-//
-//  Created by Theis Egeberg on 09/10/2022.
-//
-
-import Foundation
 
 struct TwoStepRunner<OuterDependency, InnerDependency> {
     let outerRunner: DependentRunner<OuterDependency>
     let innerRunner: DependentRunner<InnerDependency>
 
-    init(
-        outerRunner: DependentRunner<OuterDependency> = .init(),
-        innerRunner: DependentRunner<InnerDependency> = .init()
-    ) {
-        self.outerRunner = outerRunner
-        self.innerRunner = innerRunner
+    init() {
+        outerRunner = .init()
+        innerRunner = .init()
     }
 
     func run<Success>(

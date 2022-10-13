@@ -32,7 +32,7 @@ actor Logger {
     func log(_ message: String) {
         log.append("\n\(message)")
     }
-    
+
     func printLog() {
         print(log)
     }
@@ -42,8 +42,8 @@ public class FakeOauth {
     var refreshToken: TimedToken?
     var accessToken: TimedToken?
     var password: String = "PWD"
-    let logger:Logger = .init()
-    
+    let logger: Logger = .init()
+
     public init() {}
 
     func log(_ message: String) {
@@ -54,7 +54,7 @@ public class FakeOauth {
 
     public func login(password _: String) async -> TimedToken {
         log("🦑 LOGIN CALLED")
-        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 1_000_000_000))
         let refreshToken = TimedToken(timeToLive: 3)
         self.refreshToken = refreshToken
         accessToken = nil
@@ -84,12 +84,12 @@ public class FakeOauth {
         guard let ownRefreshToken = refreshToken,
               ownRefreshToken.validate(clientToken: clientRefreshToken)
         else {
-            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
+            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 300_000_000))
             log("🦑 REFRESH UNAUTHORISED")
             return .unauthorised
         }
-        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
         log("🦑 REFRESH NEW ACCESS TOKEN GRANTED")
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 300_000_000))
         let newAccessToken = TimedToken()
         accessToken = newAccessToken
         return .updatedToken(newAccessToken.token)
@@ -100,12 +100,12 @@ public class FakeOauth {
         guard let ownAcccessToken = accessToken,
               ownAcccessToken.validate(clientToken: clientAccessToken)
         else {
-            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 3_000_000_000))
             log("🦑 RESOURCE UNAUTHORISED")
+            try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 300_000_000))
             return .unauthorised
         }
-        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 200_000_000))
         log("🦑 RESOURCE OK")
+        try! await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000 ... 300_000_000))
         return .ok("<html><body>Hello world!</body></html>")
     }
 
