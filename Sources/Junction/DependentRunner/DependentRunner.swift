@@ -1,6 +1,12 @@
 
 import Foundation
 
+enum StallResult {
+    case timeout
+    case recommence
+    case cancelled
+}
+
 public actor DependentRunner<Dependency> {
     
     private class VersionedDependency {
@@ -31,7 +37,7 @@ public actor DependentRunner<Dependency> {
     private var dependency: VersionedDependency
     private var threadSleep: UInt64
     private var defaultTimeout: TimeInterval
-
+    
     public init(
         dependency: Dependency? = nil,
         threadSleep: UInt64 = 100_000_000,
@@ -46,7 +52,7 @@ public actor DependentRunner<Dependency> {
     /// - Parameter context: A context that provides information for running and generating dependencies.
     /// - Returns: The result of the execution.
     public func run<Success>(
-        _ context: any DependentRunnerContext<Success, Dependency>
+        _ context:any DependentRunnerContext<Success, Dependency>
     ) async -> RunResult<Success> {
         await run(task: context.run, refreshDependency: context.refresh, timeout: context.timeout())
     }
@@ -54,10 +60,10 @@ public actor DependentRunner<Dependency> {
     /// Tries to execute a tas that requires a `Dependency`. If the `Dependency` is invalid or missing it
     /// attempt to run
     /// - Parameters:
-    ///   - task: <#task description#>
-    ///   - updateDependency: <#updateDependency description#>
-    ///   - timeout: <#timeout description#>
-    /// - Returns: <#description#>
+    ///   - task: The job to be performed. Must return a `TaskResult` which can either mean that it succeded, threw an error or requires an update
+    ///   - updateDependency: The job to be performed if the dependency is missing or needs to be refreshed. Must return a `RefreshResult` which can be a succesful refresh or an error.
+    ///   - timeout: The maximum time the task must wait before it times out. It will only timeout once it restarts.
+    /// - Returns: The final result of the run after any refreshes, timeouts and successes.
     public func run<Success>(
         task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
         refreshDependency: () async throws -> (RefreshResult<Dependency>),
@@ -84,18 +90,20 @@ public actor DependentRunner<Dependency> {
             }
         }
 
+        guard isNotTimedOut(started: started, timeout: timeout) else {
+            return .timeout
+        }
+        
         if state == .failedRefresh {
             return .failedRefresh
         }
 
         guard let actualDependency = dependency.latest else {
-            state = .refreshing
             do {
+                state = .refreshing
                 switch try await refreshDependency() {
                 case let .refreshedDependency(refreshed):
-                    if state == .refreshing {
-                        self.dependency.setDependency(refreshed)
-                    }
+                    dependency.setDependency(refreshed)
                     state = .ready
                     return await run(
                         task: task,
@@ -145,6 +153,10 @@ public actor DependentRunner<Dependency> {
     public func refresh(dependency freshDependency: Dependency) {
         dependency.latest = freshDependency
         state = .ready
+    }
+    
+    private func isNotTimedOut(started:Date, timeout:TimeInterval?) -> Bool {
+        Date().timeIntervalSince(started) < (timeout ?? defaultTimeout)
     }
 
 }
