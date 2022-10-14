@@ -1,6 +1,7 @@
 
 import Foundation
 
+/// A specialised `TwoStepRunner` that handles OAuth like scenarios.
 public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
     public struct RefreshToken {
         let token: RefreshTokenType
@@ -13,8 +14,8 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
 
     private let twoStepRunner: TwoStepRunner<RefreshToken, AccessToken>
 
-    public init(threadSleep: UInt64, timeout: TimeInterval) {
-        twoStepRunner = .init(threadSleep: threadSleep, timeout: timeout)
+    public init(refreshToken: RefreshToken? = nil, accessToken: AccessToken? = nil, threadSleep: UInt64, timeout: TimeInterval) {
+        twoStepRunner = .init(outerDependency: refreshToken, innerDependency: accessToken, threadSleep: threadSleep, defaultTimeout: timeout)
     }
 
     public func run<Success>(

@@ -78,7 +78,7 @@ final class JunctionTests: XCTestCase {
             let value: UUID
         }
 
-        let oauthRunner = TwoStepRunner<Token, Token>(threadSleep: 50_000_000, timeout: 10)
+        let oauthRunner = TwoStepRunner<Token, Token>(threadSleep: 50_000_000, defaultTimeout: 10)
 
         for _ in 0 ..< 200 {
             Task {
