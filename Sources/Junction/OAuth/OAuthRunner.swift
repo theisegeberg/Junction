@@ -11,12 +11,13 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
         let token: AccessTokenType
     }
 
-    let refreshRunner: DependentRunner<RefreshToken>
-    let accessRunner: DependentRunner<AccessToken>
+//    let refreshRunner: DependentRunner<RefreshToken>
+//    let accessRunner: DependentRunner<AccessToken>
 
+    let twoStepRunner: TwoStepRunner<RefreshToken,AccessToken>
+    
     public init(threadSleep: UInt64, timeout: TimeInterval) {
-        refreshRunner = .init(threadSleep: threadSleep, defaultTimeout: timeout)
-        accessRunner = .init(threadSleep: threadSleep, defaultTimeout: timeout)
+        twoStepRunner = .init(threadSleep: threadSleep, timeout: timeout)
     }
 
     public func run<Success>(
@@ -26,37 +27,28 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
     }
 
     public func run<Success>(
-        _ runBlock: (AccessToken) async -> TaskResult<Success>,
-        refreshAccessToken: (RefreshToken) async -> RefreshResult<AccessToken>,
-        refreshRefreshToken: () async -> RefreshResult<RefreshToken>
+        _ runBlock: (AccessToken) async throws -> TaskResult<Success>,
+        refreshAccessToken: (RefreshToken) async throws -> RefreshResult<AccessToken>,
+        refreshRefreshToken: () async throws -> RefreshResult<RefreshToken>
     ) async -> RunResult<Success> {
-        await refreshRunner.run {
-            refreshDependency in
-
-            let innerResult = await accessRunner.run {
-                accessDependency in
-                await runBlock(accessDependency)
-            } refreshDependency: {
-                await refreshAccessToken(refreshDependency)
+        
+        await twoStepRunner.run({
+            accessDependency in
+            try await runBlock(accessDependency)
+        }, refreshInner: { refreshDependency in
+            try await refreshAccessToken(refreshDependency)
+        }, refreshOuter: { accessRunner in
+            switch try await refreshRefreshToken() {
+                case .failedRefresh:
+                    return .failedRefresh
+                case let .refreshedDependency(refreshToken):
+                    if let accessToken = refreshToken.accessToken {
+                        try await accessRunner.refresh(dependency: accessToken)
+                    } else {
+                        try await accessRunner.reset()
+                    }
+                    return .refreshedDependency(refreshToken)
             }
-            if case .failedRefresh = innerResult {
-                return .dependencyRequiresRefresh
-            }
-            return .success(innerResult)
-
-        } refreshDependency: {
-            switch await refreshRefreshToken() {
-            case .failedRefresh:
-                return .failedRefresh
-            case let .refreshedDependency(refreshToken):
-                if let accessToken = refreshToken.accessToken {
-                    await accessRunner.refresh(dependency: accessToken)
-                } else {
-                    await accessRunner.reset()
-                }
-                return .refreshedDependency(refreshToken)
-            }
-        }
-        .flatMap { $0 }
+        })
     }
 }

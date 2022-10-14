@@ -51,7 +51,7 @@ final class JunctionTests: XCTestCase {
                     return .success(innerResult)
                 } refreshDependency: {
                     let rDeppie = await backend.login(password: "PWD")
-                    await accessRunner.reset()
+                    try await accessRunner.reset()
                     return RefreshResult.refreshedDependency(.init(refresh: rDeppie.token))
                 }
                 switch result {
@@ -80,7 +80,7 @@ final class JunctionTests: XCTestCase {
             let value: UUID
         }
 
-        let oauthRunner = TwoStepRunner<Token, Token>()
+        let oauthRunner = TwoStepRunner<Token, Token>(threadSleep: 50_000_000, timeout: 10)
 
         for _ in 0 ..< 200 {
             Task {
@@ -103,8 +103,13 @@ final class JunctionTests: XCTestCase {
                     case let .updatedToken(uuid):
                         return RefreshResult.refreshedDependency(.init(value: uuid))
                     }
-                } refreshOuter: {
+                } refreshOuter: { innerRunner in
                     let refreshToken = await backend.login(password: "PWD")
+                    do {
+                        try await innerRunner.reset()
+                    } catch {
+                        return .failedRefresh
+                    }
                     return RefreshResult.refreshedDependency(.init(value: refreshToken.token))
                 }
                 switch result {

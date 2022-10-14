@@ -1,12 +1,6 @@
 
 import Foundation
 
-enum StallResult {
-    case timeout
-    case recommence
-    case cancelled
-}
-
 public actor DependentRunner<Dependency> {
     
     private class VersionedDependency {
@@ -38,6 +32,11 @@ public actor DependentRunner<Dependency> {
     private var threadSleep: UInt64
     private var defaultTimeout: TimeInterval
     
+    /// Creates a new runner.
+    /// - Parameters:
+    ///   - dependency: A pre-existing dependency.
+    ///   - threadSleep: If the runner is currently refreshing then another incoming task will go into a holding pattern, the `threadSleep` is the intervals at which a holding pattern task will check if the dependency is refreshed. It's given in nano seconds.
+    ///   - defaultTimeout: The default number of seconds a task will wait before it times out.
     public init(
         dependency: Dependency? = nil,
         threadSleep: UInt64 = 100_000_000,
@@ -144,13 +143,21 @@ public actor DependentRunner<Dependency> {
         }
     }
 
-    public func reset() {
+    public func reset() async throws {
+        while state == .refreshing {
+            try await Task.sleep(nanoseconds: threadSleep)
+            await Task.yield()
+        }
         dependency.version = 0
         dependency.latest = nil
         state = .ready
     }
 
-    public func refresh(dependency freshDependency: Dependency) {
+    public func refresh(dependency freshDependency: Dependency) async throws {
+        while state == .refreshing {
+            try await Task.sleep(nanoseconds: threadSleep)
+            await Task.yield()
+        }
         dependency.latest = freshDependency
         state = .ready
     }

@@ -1,34 +1,34 @@
 
-struct TwoStepRunner<OuterDependency, InnerDependency> {
+import Foundation
+
+public struct TwoStepRunner<OuterDependency, InnerDependency> {
     let outerRunner: DependentRunner<OuterDependency>
     let innerRunner: DependentRunner<InnerDependency>
 
-    init() {
-        outerRunner = .init()
-        innerRunner = .init()
+    public init(threadSleep: UInt64, timeout: TimeInterval) {
+        outerRunner = .init(threadSleep: threadSleep, defaultTimeout: timeout)
+        innerRunner = .init(threadSleep: threadSleep, defaultTimeout: timeout)
     }
 
-    func run<Success>(
-        _ runBlock: (InnerDependency) async -> TaskResult<Success>,
-        refreshInner: (OuterDependency) async -> RefreshResult<InnerDependency>,
-        refreshOuter: () async -> RefreshResult<OuterDependency>
+    public func run<Success>(
+        _ runBlock: (InnerDependency) async throws -> TaskResult<Success>,
+        refreshInner: (OuterDependency) async throws -> RefreshResult<InnerDependency>,
+        refreshOuter: (DependentRunner<InnerDependency>) async throws -> RefreshResult<OuterDependency>
     ) async -> RunResult<Success> {
         await outerRunner.run {
             refreshDependency in
             let innerResult = await innerRunner.run {
                 accessDependency in
-                await runBlock(accessDependency)
+                try await runBlock(accessDependency)
             } refreshDependency: {
-                await refreshInner(refreshDependency)
+                try await refreshInner(refreshDependency)
             }
             if case .failedRefresh = innerResult {
                 return .dependencyRequiresRefresh
             }
             return .success(innerResult)
         } refreshDependency: {
-            let result = await refreshOuter()
-            await innerRunner.reset()
-            return result
+            try await refreshOuter(innerRunner)
         }
         .flatMap { $0 }
     }
