@@ -11,11 +11,8 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
         let token: AccessTokenType
     }
 
-//    let refreshRunner: DependentRunner<RefreshToken>
-//    let accessRunner: DependentRunner<AccessToken>
+    private let twoStepRunner: TwoStepRunner<RefreshToken, AccessToken>
 
-    let twoStepRunner: TwoStepRunner<RefreshToken,AccessToken>
-    
     public init(threadSleep: UInt64, timeout: TimeInterval) {
         twoStepRunner = .init(threadSleep: threadSleep, timeout: timeout)
     }
@@ -31,7 +28,6 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
         refreshAccessToken: (RefreshToken) async throws -> RefreshResult<AccessToken>,
         refreshRefreshToken: () async throws -> RefreshResult<RefreshToken>
     ) async -> RunResult<Success> {
-        
         await twoStepRunner.run({
             accessDependency in
             try await runBlock(accessDependency)
@@ -39,15 +35,15 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
             try await refreshAccessToken(refreshDependency)
         }, refreshOuter: { accessRunner in
             switch try await refreshRefreshToken() {
-                case .failedRefresh:
-                    return .failedRefresh
-                case let .refreshedDependency(refreshToken):
-                    if let accessToken = refreshToken.accessToken {
-                        try await accessRunner.refresh(dependency: accessToken)
-                    } else {
-                        try await accessRunner.reset()
-                    }
-                    return .refreshedDependency(refreshToken)
+            case .failedRefresh:
+                return .failedRefresh
+            case let .refreshedDependency(refreshToken):
+                if let accessToken = refreshToken.accessToken {
+                    try await accessRunner.refresh(dependency: accessToken)
+                } else {
+                    try await accessRunner.reset()
+                }
+                return .refreshedDependency(refreshToken)
             }
         })
     }

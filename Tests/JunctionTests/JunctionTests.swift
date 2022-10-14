@@ -2,16 +2,14 @@
 import XCTest
 
 final class JunctionTests: XCTestCase {
-    
     struct RDeppie {
         let refresh: UUID
     }
-    
+
     struct Deppie {
         let access: UUID
     }
 
-    
     func testManualOAuth() async throws {
         let backend = FakeOauth()
         let refreshRunner = DependentRunner<RDeppie>()
@@ -172,7 +170,6 @@ final class JunctionTests: XCTestCase {
                     fatalError(error.localizedDescription)
                 case .timeout:
                     fatalError("Timed out")
-
                 }
             }
         }

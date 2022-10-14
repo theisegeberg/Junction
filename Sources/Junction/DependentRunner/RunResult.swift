@@ -41,17 +41,17 @@ public enum RunResult<Success> {
     }
 }
 
-extension RunResult:Equatable where Success:Equatable {
+extension RunResult: Equatable where Success: Equatable {
     public static func == (lhs: RunResult<Success>, rhs: RunResult<Success>) -> Bool {
         switch (lhs, rhs) {
-            case (.success(let s1), .success(let s2)):
-                return s1 == s2
-            case (.failedRefresh, .failedRefresh):
-                return true
-            case (.timeout , .timeout):
-                return true
-            default:
-                return false
+        case let (.success(s1), .success(s2)):
+            return s1 == s2
+        case (.failedRefresh, .failedRefresh):
+            return true
+        case (.timeout, .timeout):
+            return true
+        default:
+            return false
         }
     }
 }

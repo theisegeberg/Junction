@@ -2,36 +2,35 @@
 import Foundation
 
 public actor DependentRunner<Dependency> {
-    
     private class VersionedDependency {
-        var latest:Dependency?
-        var version:Int
-        
+        var latest: Dependency?
+        var version: Int
+
         init(dependency: Dependency? = nil) {
-            self.latest = dependency
-            self.version = 0
+            latest = dependency
+            version = 0
         }
-        
-        func setDependency(_ dependency:Dependency?) {
-            if self.version == Int.max {
-                self.version = 0
+
+        func setDependency(_ dependency: Dependency?) {
+            if version == Int.max {
+                version = 0
             }
-            self.version = version + 1
-            self.latest = dependency
+            version = version + 1
+            latest = dependency
         }
     }
-    
+
     private enum State {
         case ready
         case refreshing
         case failedRefresh
     }
-    
-    private var state:State = .ready
+
+    private var state: State = .ready
     private var dependency: VersionedDependency
     private var threadSleep: UInt64
     private var defaultTimeout: TimeInterval
-    
+
     /// Creates a new runner.
     /// - Parameters:
     ///   - dependency: A pre-existing dependency.
@@ -46,16 +45,16 @@ public actor DependentRunner<Dependency> {
         self.threadSleep = threadSleep
         self.defaultTimeout = defaultTimeout
     }
-    
+
     /// Execute the code provided by the context.
     /// - Parameter context: A context that provides information for running and generating dependencies.
     /// - Returns: The result of the execution.
     public func run<Success>(
-        _ context:any DependentRunnerContext<Success, Dependency>
+        _ context: any DependentRunnerContext<Success, Dependency>
     ) async -> RunResult<Success> {
         await run(task: context.run, refreshDependency: context.refresh, timeout: context.timeout())
     }
-    
+
     /// Tries to execute a tas that requires a `Dependency`. If the `Dependency` is invalid or missing it
     /// attempt to run
     /// - Parameters:
@@ -92,7 +91,7 @@ public actor DependentRunner<Dependency> {
         guard isNotTimedOut(started: started, timeout: timeout) else {
             return .timeout
         }
-        
+
         if state == .failedRefresh {
             return .failedRefresh
         }
@@ -127,7 +126,7 @@ public actor DependentRunner<Dependency> {
                 /// while we were performing our task. If the lock changed then another process
                 /// changed it, and we should just move on.
                 if versionAtRun == dependency.version {
-                    self.dependency.setDependency(nil)
+                    dependency.setDependency(nil)
                 }
                 return await run(
                     task: task,
@@ -161,9 +160,8 @@ public actor DependentRunner<Dependency> {
         dependency.latest = freshDependency
         state = .ready
     }
-    
-    private func isNotTimedOut(started:Date, timeout:TimeInterval?) -> Bool {
+
+    private func isNotTimedOut(started: Date, timeout: TimeInterval?) -> Bool {
         Date().timeIntervalSince(started) < (timeout ?? defaultTimeout)
     }
-
 }
