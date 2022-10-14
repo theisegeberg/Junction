@@ -51,8 +51,8 @@ public actor DependentRunner<Dependency> {
     /// - Returns: The result of the execution.
     public func run<Success>(
         _ context: any DependentRunnerContext<Success, Dependency>
-    ) async -> RunResult<Success> {
-        await run(task: context.run, refreshDependency: context.refresh, timeout: context.timeout())
+    ) async throws -> RunResult<Success> {
+        try await run(task: context.run, refreshDependency: context.refresh, timeout: context.timeout())
     }
 
     /// Tries to execute a tas that requires a `Dependency`. If the `Dependency` is invalid or missing it
@@ -66,8 +66,8 @@ public actor DependentRunner<Dependency> {
         task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
         refreshDependency: () async throws -> (RefreshResult<Dependency>),
         timeout: TimeInterval? = nil
-    ) async -> RunResult<Success> {
-        await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
+    ) async throws -> RunResult<Success> {
+        try await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
     }
 
     private func run<Success>(
@@ -75,13 +75,9 @@ public actor DependentRunner<Dependency> {
         refreshDependency: () async throws -> (RefreshResult<Dependency>),
         started: Date,
         timeout: TimeInterval?
-    ) async -> RunResult<Success> {
+    ) async throws -> RunResult<Success> {
         while state == .refreshing {
-            do {
-                try await Task.sleep(nanoseconds: threadSleep)
-            } catch {
-                return .otherError(error)
-            }
+            try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
             if Date().timeIntervalSince(started) > (timeout ?? defaultTimeout) {
                 return .timeout
@@ -97,13 +93,12 @@ public actor DependentRunner<Dependency> {
         }
 
         guard let actualDependency = dependency.latest else {
-            do {
-                state = .refreshing
-                switch try await refreshDependency() {
+            state = .refreshing
+            switch try await refreshDependency() {
                 case let .refreshedDependency(refreshed):
                     dependency.setDependency(refreshed)
                     state = .ready
-                    return await run(
+                    return try await run(
                         task: task,
                         refreshDependency: refreshDependency,
                         started: started,
@@ -112,15 +107,11 @@ public actor DependentRunner<Dependency> {
                 case .failedRefresh:
                     state = .failedRefresh
                     return .failedRefresh
-                }
-            } catch {
-                return .otherError(error)
             }
         }
-
-        do {
-            let versionAtRun = dependency.version
-            switch try await task(actualDependency) {
+        
+        let versionAtRun = dependency.version
+        switch try await task(actualDependency) {
             case .dependencyRequiresRefresh:
                 /// If  the is the same that means that no other process changed the dependency
                 /// while we were performing our task. If the lock changed then another process
@@ -128,7 +119,7 @@ public actor DependentRunner<Dependency> {
                 if versionAtRun == dependency.version {
                     dependency.setDependency(nil)
                 }
-                return await run(
+                return try await run(
                     task: task,
                     refreshDependency: refreshDependency,
                     started: started,
@@ -136,9 +127,6 @@ public actor DependentRunner<Dependency> {
                 )
             case let .success(success):
                 return .success(success)
-            }
-        } catch {
-            return .otherError(error)
         }
     }
 

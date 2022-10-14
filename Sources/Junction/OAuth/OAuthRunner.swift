@@ -20,16 +20,16 @@ public struct OAuthRunner<RefreshTokenType, AccessTokenType> {
 
     public func run<Success>(
         _ context: any OAuthRunnerContext<Success, RefreshToken, AccessToken>
-    ) async -> RunResult<Success> {
-        await run(context.run, refreshAccessToken: context.refreshAccessToken, refreshRefreshToken: context.refreshRefreshToken)
+    ) async throws -> RunResult<Success> {
+        try await run(context.run, refreshAccessToken: context.refreshAccessToken, refreshRefreshToken: context.refreshRefreshToken)
     }
 
     public func run<Success>(
         _ runBlock: (AccessToken) async throws -> TaskResult<Success>,
         refreshAccessToken: (RefreshToken) async throws -> RefreshResult<AccessToken>,
         refreshRefreshToken: () async throws -> RefreshResult<RefreshToken>
-    ) async -> RunResult<Success> {
-        await twoStepRunner.run({
+    ) async throws -> RunResult<Success> {
+        try await twoStepRunner.run({
             accessDependency in
             try await runBlock(accessDependency)
         }, refreshInner: { refreshDependency in

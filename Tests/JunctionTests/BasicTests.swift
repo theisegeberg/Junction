@@ -6,7 +6,7 @@ final class BasicTests: XCTestCase {
         let runner = DependentRunner<Int>()
         let randomNumber = Int.random(in: 0 ... Int.max)
 
-        let successResult = await runner.run { dependency in
+        let successResult = try await runner.run { dependency in
             .success(dependency)
         } refreshDependency: {
             .refreshedDependency(randomNumber)
@@ -20,7 +20,7 @@ final class BasicTests: XCTestCase {
 
         var temporarilyRefreshedDependency = 0
         let expectedNumber = 3
-        let incrementingResult = await runner.run(task: { dependency in
+        let incrementingResult = try await runner.run(task: { dependency in
             XCTAssertLessThanOrEqual(dependency, expectedNumber)
             if dependency == expectedNumber {
                 return .success(dependency)
@@ -39,7 +39,7 @@ final class BasicTests: XCTestCase {
     func testUpdateWithRefreshFailure1() async throws {
         let runner = DependentRunner<Int>()
 
-        let failedResult = await runner.run(task: { _ -> TaskResult<Int> in
+        let failedResult = try await runner.run(task: { _ -> TaskResult<Int> in
             .dependencyRequiresRefresh
         }, refreshDependency: {
             .failedRefresh
@@ -51,7 +51,7 @@ final class BasicTests: XCTestCase {
     func testUpdateWithRefreshFailure2() async throws {
         let runner = DependentRunner<Int>()
 
-        let failedResult = await runner.run(task: { _ -> TaskResult<Int> in
+        let failedResult = try await runner.run(task: { _ -> TaskResult<Int> in
             .success(10)
         }, refreshDependency: {
             .failedRefresh
@@ -65,7 +65,7 @@ final class BasicTests: XCTestCase {
 
         let timeout = TimeInterval.random(in: 1 ..< 2)
         let successResult = Int.random(in: 0 ... Int.max)
-        let timeoutFailureResult = await runner.run(task: { dependency -> TaskResult<Int> in
+        let timeoutFailureResult = try await runner.run(task: { dependency -> TaskResult<Int> in
             .success(dependency)
         }, refreshDependency: {
             try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
@@ -81,7 +81,7 @@ final class BasicTests: XCTestCase {
 
         let timeout = TimeInterval.random(in: 1 ..< 2)
         let successResult = Int.random(in: 0 ... Int.max)
-        let timeoutSuccess = await runner.run(task: { dependency -> TaskResult<Int> in
+        let timeoutSuccess = try await runner.run(task: { dependency -> TaskResult<Int> in
             .success(dependency)
         }, refreshDependency: {
             try await Task.sleep(nanoseconds: UInt64(timeout * 0.8 * 1_000_000_000))
@@ -123,7 +123,7 @@ final class BasicTests: XCTestCase {
 
         let context = Context()
 
-        let incrementingResult = await runner.run(context)
+        let incrementingResult = try await runner.run(context)
 
         XCTAssertEqual(incrementingResult, .success("\(context.expectedNumber)"))
     }

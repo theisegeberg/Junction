@@ -15,10 +15,10 @@ public struct TwoStepRunner<OuterDependency, InnerDependency> {
         refreshInner: (OuterDependency) async throws -> RefreshResult<InnerDependency>,
         refreshOuter: (DependentRunner<InnerDependency>) async throws -> RefreshResult<OuterDependency>,
         timeout: TimeInterval? = nil
-    ) async -> RunResult<Success> {
-        await outerRunner.run {
+    ) async throws -> RunResult<Success> {
+        try await outerRunner.run {
             refreshDependency in
-            let innerResult = await innerRunner.run(
+            let innerResult = try await innerRunner.run(
                 task: {
                     accessDependency in
                     try await runBlock(accessDependency)

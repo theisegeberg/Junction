@@ -21,8 +21,8 @@ final class JunctionTests: XCTestCase {
         for _ in 0 ..< 200 {
             Task {
                 try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<RunResult<String>> = await refreshRunner.run { refreshDependency in
-                    let innerResult: RunResult<String> = await accessRunner.run { accessDependency in
+                let result: RunResult<RunResult<String>> = try! await refreshRunner.run { refreshDependency in
+                    let innerResult: RunResult<String> = try! await accessRunner.run { accessDependency in
                         let res = await backend.getResource(clientAccessToken: accessDependency.access)
                         switch res {
                         case .unauthorised:
@@ -57,8 +57,6 @@ final class JunctionTests: XCTestCase {
                     await counter.increment()
                 case .failedRefresh:
                     fatalError("Update failed")
-                case let .otherError(error):
-                    fatalError(error.localizedDescription)
                 case .timeout:
                     fatalError("Timed out")
                 }
@@ -83,7 +81,7 @@ final class JunctionTests: XCTestCase {
         for _ in 0 ..< 200 {
             Task {
                 try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<String> = await oauthRunner.run { accessDependency in
+                let result: RunResult<String> = try! await oauthRunner.run { accessDependency in
                     switch await backend.getResource(clientAccessToken: accessDependency.value) {
                     case .unauthorised:
                         return .dependencyRequiresRefresh
@@ -115,8 +113,6 @@ final class JunctionTests: XCTestCase {
                     await counter.increment()
                 case .failedRefresh:
                     fatalError("Update failed")
-                case let .otherError(error):
-                    fatalError(error.localizedDescription)
                 case .timeout:
                     fatalError("Timed out")
                 }
@@ -137,7 +133,7 @@ final class JunctionTests: XCTestCase {
         for _ in 0 ..< 200 {
             Task {
                 try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<String> = await oauthRunner.run({
+                let result: RunResult<String> = try! await oauthRunner.run({
                     accessDependency in
                     switch await backend.getResource(clientAccessToken: accessDependency.token) {
                     case .unauthorised:
@@ -166,8 +162,6 @@ final class JunctionTests: XCTestCase {
                     await counter.increment()
                 case .failedRefresh:
                     fatalError("Update failed")
-                case let .otherError(error):
-                    fatalError(error.localizedDescription)
                 case .timeout:
                     fatalError("Timed out")
                 }
@@ -189,7 +183,7 @@ final class JunctionTests: XCTestCase {
         for _ in 0 ..< 500 {
             Task {
                 try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<String> = await oauthRunner.run({
+                let result: RunResult<String> = try! await oauthRunner.run({
                     accessDependency in
                     switch await backend.getResource(clientAccessToken: accessDependency.token) {
                     case .unauthorised:
@@ -218,8 +212,6 @@ final class JunctionTests: XCTestCase {
                     await counter.increment()
                 case .failedRefresh:
                     fatalError("Update failed")
-                case let .otherError(error):
-                    fatalError(error.localizedDescription)
                 case .timeout:
                     await timeOutCounter.increment()
                 }

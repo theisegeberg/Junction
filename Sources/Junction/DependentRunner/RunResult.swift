@@ -3,7 +3,6 @@ public enum RunResult<Success> {
     case success(Success)
     case failedRefresh
     case timeout
-    case otherError(Error)
 
     public func map<NewSuccess>(_ f: (Success) -> NewSuccess) -> RunResult<NewSuccess> {
         switch self {
@@ -11,8 +10,6 @@ public enum RunResult<Success> {
             return .success(f(success))
         case .failedRefresh:
             return .failedRefresh
-        case let .otherError(error):
-            return .otherError(error)
         case .timeout:
             return .timeout
         }
@@ -26,15 +23,11 @@ public enum RunResult<Success> {
                 return .success(success)
             case .failedRefresh:
                 return .failedRefresh
-            case let .otherError(error):
-                return .otherError(error)
             case .timeout:
                 return .timeout
             }
         case .failedRefresh:
             return .failedRefresh
-        case let .otherError(error):
-            return .otherError(error)
         case .timeout:
             return .timeout
         }
