@@ -1,5 +1,5 @@
 
-public protocol OAuthRunnerContext<Success, RefreshToken, AccessToken> {
+public protocol OAuthDependencyProxy<Success, RefreshToken, AccessToken> {
     associatedtype Success
     associatedtype RefreshToken
     associatedtype AccessToken

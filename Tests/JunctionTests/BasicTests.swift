@@ -3,12 +3,12 @@ import XCTest
 
 final class BasicTests: XCTestCase {
     func testSuccess() async throws {
-        let runner = DependentRunner<Int>()
+        let runner = Dependency<Int>()
         let randomNumber = Int.random(in: 0 ... Int.max)
 
         let successResult = try await runner.run { dependency in
             .success(dependency)
-        } refreshDependency: {
+        } refreshDependency: { _ in
             .refreshedDependency(randomNumber)
         }
 
@@ -16,7 +16,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testIncrementingUpdateSuccess() async throws {
-        let runner = DependentRunner<Int>()
+        let runner = Dependency<Int>()
 
         var temporarilyRefreshedDependency = 0
         let expectedNumber = 3
@@ -27,7 +27,7 @@ final class BasicTests: XCTestCase {
             } else {
                 return .dependencyRequiresRefresh
             }
-        }, refreshDependency: {
+        }, refreshDependency: { _ in
             temporarilyRefreshedDependency = temporarilyRefreshedDependency + 1
             XCTAssertLessThanOrEqual(temporarilyRefreshedDependency, expectedNumber)
             return .refreshedDependency(temporarilyRefreshedDependency)
@@ -37,11 +37,11 @@ final class BasicTests: XCTestCase {
     }
 
     func testUpdateWithRefreshFailure1() async throws {
-        let runner = DependentRunner<Int>()
+        let runner = Dependency<Int>()
 
         let failedResult = try await runner.run(task: { _ -> TaskResult<Int> in
             .dependencyRequiresRefresh
-        }, refreshDependency: {
+        }, refreshDependency: { _ in
             .failedRefresh
         })
 
@@ -49,11 +49,11 @@ final class BasicTests: XCTestCase {
     }
 
     func testUpdateWithRefreshFailure2() async throws {
-        let runner = DependentRunner<Int>()
+        let runner = Dependency<Int>()
 
         let failedResult = try await runner.run(task: { _ -> TaskResult<Int> in
             .success(10)
-        }, refreshDependency: {
+        }, refreshDependency: { _ in
             .failedRefresh
         })
 
@@ -61,13 +61,13 @@ final class BasicTests: XCTestCase {
     }
 
     func testTimeoutFailure() async throws {
-        let runner = DependentRunner<Int>()
+        let runner = Dependency<Int>()
 
         let timeout = TimeInterval.random(in: 1 ..< 2)
         let successResult = Int.random(in: 0 ... Int.max)
         let timeoutFailureResult = try await runner.run(task: { dependency -> TaskResult<Int> in
             .success(dependency)
-        }, refreshDependency: {
+        }, refreshDependency: { _ in
             try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
             return .refreshedDependency(successResult)
         },
@@ -77,13 +77,13 @@ final class BasicTests: XCTestCase {
     }
 
     func testTimeoutSuccess() async throws {
-        let runner = DependentRunner<Int>()
+        let runner = Dependency<Int>()
 
         let timeout = TimeInterval.random(in: 1 ..< 2)
         let successResult = Int.random(in: 0 ... Int.max)
         let timeoutSuccess = try await runner.run(task: { dependency -> TaskResult<Int> in
             .success(dependency)
-        }, refreshDependency: {
+        }, refreshDependency: { _ in
             try await Task.sleep(nanoseconds: UInt64(timeout * 0.8 * 1_000_000_000))
             return .refreshedDependency(successResult)
         },
@@ -92,9 +92,9 @@ final class BasicTests: XCTestCase {
     }
 
     func testContextObject() async throws {
-        let runner = DependentRunner<Int>()
+        let runner = Dependency<Int>()
 
-        class Context: DependentRunnerContext {
+        class Context: DependencyProxy {
             typealias Success = String
             typealias Dependency = Int
 
@@ -114,11 +114,12 @@ final class BasicTests: XCTestCase {
                 }
             }
 
-            func refresh() async throws -> (Junction.RefreshResult<Int>) {
+            func refresh(failingDependency: Int?) async throws -> (RefreshResult<Int>) {
                 temporarilyRefreshedDependency = temporarilyRefreshedDependency + 1
                 XCTAssertLessThanOrEqual(temporarilyRefreshedDependency, expectedNumber)
                 return .refreshedDependency(temporarilyRefreshedDependency)
             }
+            
         }
 
         let context = Context()

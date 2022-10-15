@@ -1,22 +1,48 @@
 
 import Foundation
 
-public actor DependentRunner<Dependency> {
+public actor Dependency<DependencyType> {
+    
     private class VersionedDependency {
-        var latest: Dependency?
-        var version: Int
+        private var latest: DependencyType?
+        private var version: Int
+        private var isFailed: Bool
 
-        init(dependency: Dependency? = nil) {
+        init(dependency: DependencyType? = nil) {
             latest = dependency
             version = 0
+            isFailed = false
         }
 
-        func setDependency(_ dependency: Dependency?) {
+        func setDependency(_ dependency: DependencyType?) {
             if version == Int.max {
                 version = 0
             }
+            isFailed = false
             version = version + 1
             latest = dependency
+        }
+        
+        func getVersion() -> Int {
+            version
+        }
+        
+        func getLatest() -> DependencyType? {
+            latest
+        }
+        
+        func reset() {
+            latest = nil
+            version = 0
+            isFailed = false
+        }
+        
+        func fail() {
+            isFailed = true
+        }
+        
+        func getIsFailed() -> Bool {
+            isFailed
         }
     }
 
@@ -31,13 +57,16 @@ public actor DependentRunner<Dependency> {
     private var threadSleep: UInt64
     private var defaultTimeout: TimeInterval
 
-    /// Creates a new runner.
+    /// Creates a new `Dependency`.
+    ///
+    /// After creating it you can call `.run` to execute code that depends on it.
+    ///
     /// - Parameters:
     ///   - dependency: A pre-existing dependency.
     ///   - threadSleep: If the runner is currently refreshing then another incoming task will go into a holding pattern, the `threadSleep` is the intervals at which a holding pattern task will check if the dependency is refreshed. It's given in nano seconds.
     ///   - defaultTimeout: The default number of seconds a task will wait before it times out.
     public init(
-        dependency: Dependency? = nil,
+        dependency: DependencyType? = nil,
         threadSleep: UInt64 = 100_000_000,
         defaultTimeout: TimeInterval = 10
     ) {
@@ -50,9 +79,9 @@ public actor DependentRunner<Dependency> {
     /// - Parameter context: A context that provides information for running and generating dependencies.
     /// - Returns: The result of the execution.
     public func run<Success>(
-        _ context: any DependentRunnerContext<Success, Dependency>
+        _ proxy: any DependencyProxy<Success, DependencyType>
     ) async throws -> RunResult<Success> {
-        try await run(task: context.run, refreshDependency: context.refresh, timeout: context.timeout())
+        try await run(task: proxy.run, refreshDependency: proxy.refresh, timeout: proxy.timeout())
     }
 
     /// Tries to execute a tas that requires a `Dependency`. If the `Dependency` is invalid or missing it
@@ -63,16 +92,16 @@ public actor DependentRunner<Dependency> {
     ///   - timeout: The maximum time the task must wait before it times out. It will only timeout once it restarts.
     /// - Returns: The final result of the run after any refreshes, timeouts and successes.
     public func run<Success>(
-        task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
-        refreshDependency: () async throws -> (RefreshResult<Dependency>),
+        task: (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
+        refreshDependency: (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         timeout: TimeInterval? = nil
     ) async throws -> RunResult<Success> {
         try await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
     }
 
     private func run<Success>(
-        task: (_ dependency: Dependency) async throws -> (TaskResult<Success>),
-        refreshDependency: () async throws -> (RefreshResult<Dependency>),
+        task: (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
+        refreshDependency: (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         started: Date,
         timeout: TimeInterval?
     ) async throws -> RunResult<Success> {
@@ -92,9 +121,9 @@ public actor DependentRunner<Dependency> {
             return .failedRefresh
         }
 
-        guard let actualDependency = dependency.latest else {
+        if dependency.getIsFailed() || dependency.getLatest() == nil {
             state = .refreshing
-            switch try await refreshDependency() {
+            switch try await refreshDependency(dependency.getLatest()) {
                 case let .refreshedDependency(refreshed):
                     dependency.setDependency(refreshed)
                     state = .ready
@@ -110,14 +139,24 @@ public actor DependentRunner<Dependency> {
             }
         }
         
-        let versionAtRun = dependency.version
+        guard let actualDependency = dependency.getLatest() else {
+            dependency.fail()
+            return try await run(
+                task: task,
+                refreshDependency: refreshDependency,
+                started: started,
+                timeout: timeout
+            )
+        }
+        
+        let versionAtRun = dependency.getVersion()
         switch try await task(actualDependency) {
             case .dependencyRequiresRefresh:
                 /// If  the is the same that means that no other process changed the dependency
                 /// while we were performing our task. If the lock changed then another process
                 /// changed it, and we should just move on.
-                if versionAtRun == dependency.version {
-                    dependency.setDependency(nil)
+                if versionAtRun == dependency.getVersion() {
+                    dependency.fail()
                 }
                 return try await run(
                     task: task,
@@ -129,23 +168,25 @@ public actor DependentRunner<Dependency> {
                 return .success(success)
         }
     }
-
+    
+    /// Resets the current runner dependencies.
     public func reset() async throws {
         while state == .refreshing {
             try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
         }
-        dependency.version = 0
-        dependency.latest = nil
+        dependency.reset()
         state = .ready
     }
-
-    public func refresh(dependency freshDependency: Dependency) async throws {
+    
+    /// Manually refreshes the dependency from without. Wil
+    /// - Parameter freshDependency: The new dependency.
+    public func refresh(dependency freshDependency: DependencyType) async throws {
         while state == .refreshing {
             try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
         }
-        dependency.latest = freshDependency
+        dependency.setDependency(freshDependency)
         state = .ready
     }
 
