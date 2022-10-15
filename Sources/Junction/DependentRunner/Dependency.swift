@@ -14,7 +14,7 @@ public actor Dependency<DependencyType> {
             isFailed = false
         }
 
-        func setDependency(_ dependency: DependencyType?) {
+        func refresh(_ dependency: DependencyType?) {
             if version == Int.max {
                 version = 0
             }
@@ -125,7 +125,7 @@ public actor Dependency<DependencyType> {
             state = .refreshing
             switch try await refreshDependency(dependency.getLatest()) {
                 case let .refreshedDependency(refreshed):
-                    dependency.setDependency(refreshed)
+                    dependency.refresh(refreshed)
                     state = .ready
                     return try await run(
                         task: task,
@@ -171,10 +171,7 @@ public actor Dependency<DependencyType> {
     
     /// Resets the current runner dependencies.
     public func reset() async throws {
-        while state == .refreshing {
-            try await Task.sleep(nanoseconds: threadSleep)
-            await Task.yield()
-        }
+        try await stall()
         dependency.reset()
         state = .ready
     }
@@ -182,12 +179,16 @@ public actor Dependency<DependencyType> {
     /// Manually refreshes the dependency from without. Wil
     /// - Parameter freshDependency: The new dependency.
     public func refresh(dependency freshDependency: DependencyType) async throws {
+        try await stall()
+        dependency.refresh(freshDependency)
+        state = .ready
+    }
+    
+    private func stall() async throws {
         while state == .refreshing {
             try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
         }
-        dependency.setDependency(freshDependency)
-        state = .ready
     }
 
     private func isNotTimedOut(started: Date, timeout: TimeInterval?) -> Bool {
