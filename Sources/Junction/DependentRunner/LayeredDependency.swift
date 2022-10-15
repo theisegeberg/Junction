@@ -6,11 +6,11 @@ import Foundation
 /// This means that you can attempt to run `B -> C`, but if `B` is missing then it will try to create that by running `A -> B`, and if `A` is missing it will try to create `A` by running `Void -> A`.
 ///
 /// These concepts are encapsulated in the terms `OuterDependency` and `InnerDependency`.
-public struct LayeredDependency<OuterDependency, InnerDependency> {
-    let outerRunner: Dependency<OuterDependency>
-    let innerRunner: Dependency<InnerDependency>
+public struct LayeredDependency<OuterDependencyType, InnerDependencyType> {
+    let outerRunner: Dependency<OuterDependencyType>
+    let innerRunner: Dependency<InnerDependencyType>
 
-    public init(outerDependency: OuterDependency? = nil, innerDependency: InnerDependency? = nil, threadSleep: UInt64, defaultTimeout: TimeInterval) {
+    public init(outerDependency: OuterDependencyType? = nil, innerDependency: InnerDependencyType? = nil, threadSleep: UInt64, defaultTimeout: TimeInterval) {
         outerRunner = .init(dependency: outerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
         innerRunner = .init(dependency: innerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
     }
@@ -28,9 +28,9 @@ public struct LayeredDependency<OuterDependency, InnerDependency> {
     ///   - timeout: The seconds the task may run before actively cancelling.
     /// - Returns: The result of the `runBlock` wrapped in a `RunResult`
     public func run<Success>(
-        _ runBlock: (InnerDependency) async throws -> TaskResult<Success>,
-        refreshInner: (OuterDependency, InnerDependency?) async throws -> RefreshResult<InnerDependency>,
-        refreshOuter: (Dependency<InnerDependency>, OuterDependency?) async throws -> RefreshResult<OuterDependency>,
+        _ runBlock: (InnerDependencyType) async throws -> TaskResult<Success>,
+        refreshInner: (OuterDependencyType, InnerDependencyType?) async throws -> RefreshResult<InnerDependencyType>,
+        refreshOuter: (Dependency<InnerDependencyType>, OuterDependencyType?) async throws -> RefreshResult<OuterDependencyType>,
         timeout: TimeInterval? = nil
     ) async throws -> RunResult<Success> {
         try await outerRunner.run {

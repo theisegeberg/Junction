@@ -1,10 +1,10 @@
 
 import Foundation
 
-public protocol DependencyProxy<Success, Value> {
+public protocol DependencyProxy<Success, DependencyType> {
     associatedtype Success
-    associatedtype Value
-    func run(_ dependency: Value) async throws -> (TaskResult<Success>)
-    func refresh(failingDependency:Value?) async throws -> (RefreshResult<Value>)
+    associatedtype DependencyType
+    func run(_ dependency: DependencyType) async throws -> (TaskResult<Success>)
+    func refresh(failingDependency:DependencyType?) async throws -> (RefreshResult<DependencyType>)
     func timeout() -> TimeInterval?
 }

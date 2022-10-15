@@ -1,7 +1,7 @@
 
 import Foundation
 
-/// A specialised `TwoStepRunner` that handles OAuth like scenarios.
+/// A specialised `LayeredDependency` that handles OAuth like scenarios.
 public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     public struct RefreshToken {
         let token: RefreshTokenType
