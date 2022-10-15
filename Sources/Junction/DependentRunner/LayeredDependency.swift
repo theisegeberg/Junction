@@ -29,8 +29,8 @@ public struct LayeredDependency<OuterDependency, InnerDependency> {
     /// - Returns: The result of the `runBlock` wrapped in a `RunResult`
     public func run<Success>(
         _ runBlock: (InnerDependency) async throws -> TaskResult<Success>,
-        refreshInner: (OuterDependency) async throws -> RefreshResult<InnerDependency>,
-        refreshOuter: (Dependency<InnerDependency>) async throws -> RefreshResult<OuterDependency>,
+        refreshInner: (OuterDependency, InnerDependency?) async throws -> RefreshResult<InnerDependency>,
+        refreshOuter: (Dependency<InnerDependency>, OuterDependency?) async throws -> RefreshResult<OuterDependency>,
         timeout: TimeInterval? = nil
     ) async throws -> RunResult<Success> {
         try await outerRunner.run {
@@ -39,16 +39,16 @@ public struct LayeredDependency<OuterDependency, InnerDependency> {
                 task: {
                     accessDependency in
                     try await runBlock(accessDependency)
-                }, refreshDependency: { _ in
-                    try await refreshInner(refreshDependency)
+                }, refreshDependency: { failedDependency in
+                    try await refreshInner(refreshDependency, failedDependency)
                 }, timeout: timeout
             )
             if case .failedRefresh = innerResult {
                 return .dependencyRequiresRefresh
             }
             return .success(innerResult)
-        } refreshDependency: { _ in
-            try await refreshOuter(innerRunner)
+        } refreshDependency: { failedDependency in
+            try await refreshOuter(innerRunner, failedDependency)
         }
         .flatMap { $0 }
     }

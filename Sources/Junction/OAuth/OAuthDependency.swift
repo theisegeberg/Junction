@@ -26,16 +26,16 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
 
     public func run<Success>(
         _ runBlock: (AccessToken) async throws -> TaskResult<Success>,
-        refreshAccessToken: (RefreshToken) async throws -> RefreshResult<AccessToken>,
-        refreshRefreshToken: () async throws -> RefreshResult<RefreshToken>
+        refreshAccessToken: (RefreshToken, AccessToken?) async throws -> RefreshResult<AccessToken>,
+        refreshRefreshToken: (RefreshToken?) async throws -> RefreshResult<RefreshToken>
     ) async throws -> RunResult<Success> {
         try await twoStepRunner.run({
             accessDependency in
             try await runBlock(accessDependency)
-        }, refreshInner: { refreshDependency in
-            try await refreshAccessToken(refreshDependency)
-        }, refreshOuter: { accessRunner in
-            switch try await refreshRefreshToken() {
+        }, refreshInner: { refreshDependency, failedAccessToken in
+            try await refreshAccessToken(refreshDependency, failedAccessToken)
+        }, refreshOuter: { accessRunner, failedRefreshToken in
+            switch try await refreshRefreshToken(failedRefreshToken) {
             case .failedRefresh:
                 return .failedRefresh
             case let .refreshedDependency(refreshToken):

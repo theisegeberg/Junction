@@ -90,7 +90,7 @@ final class JunctionTests: XCTestCase {
                     case .updatedToken:
                         fatalError()
                     }
-                } refreshInner: { refreshDependency in
+                } refreshInner: { refreshDependency, failedDependency in
                     switch await backend.refresh(clientRefreshToken: refreshDependency.value) {
                     case .unauthorised:
                         return RefreshResult.failedRefresh
@@ -99,7 +99,7 @@ final class JunctionTests: XCTestCase {
                     case let .updatedToken(uuid):
                         return RefreshResult.refreshedDependency(.init(value: uuid))
                     }
-                } refreshOuter: { innerRunner in
+                } refreshOuter: { innerRunner, failedDependency in
                     let refreshToken = await backend.login(password: "PWD")
                     do {
                         try await innerRunner.reset()
@@ -144,7 +144,7 @@ final class JunctionTests: XCTestCase {
                         fatalError()
                     }
                 }, refreshAccessToken: {
-                    refreshDependency in
+                    refreshDependency, failedAccessToken in
                     switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
                     case .unauthorised:
                         return RefreshResult.failedRefresh
@@ -153,7 +153,7 @@ final class JunctionTests: XCTestCase {
                     case let .updatedToken(uuid):
                         return RefreshResult.refreshedDependency(.init(token: uuid))
                     }
-                }, refreshRefreshToken: {
+                }, refreshRefreshToken: { failedRefreshToken in
                     let backendRefreshToken = await backend.login(password: "PWD")
                     return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: nil))
                 })
@@ -194,7 +194,7 @@ final class JunctionTests: XCTestCase {
                         fatalError()
                     }
                 }, refreshAccessToken: {
-                    refreshDependency in
+                    refreshDependency, failedAccessToken in
                     switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
                     case .unauthorised:
                         return RefreshResult.failedRefresh
@@ -204,6 +204,7 @@ final class JunctionTests: XCTestCase {
                         return RefreshResult.refreshedDependency(.init(token: uuid))
                     }
                 }, refreshRefreshToken: {
+                    failedRefreshToken in
                     let (backendRefreshToken, backendAccessToken) = await backend.loginWithAccess(password: "PWD")
                     return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: .init(token: backendAccessToken.token)))
                 })
