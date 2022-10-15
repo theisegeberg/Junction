@@ -12,7 +12,7 @@ final class BasicTests: XCTestCase {
             .refreshedDependency(randomNumber)
         }
 
-        XCTAssertEqual(successResult, .success(randomNumber))
+        XCTAssertEqual(successResult, randomNumber)
     }
 
     func testIncrementingUpdateSuccess() async throws {
@@ -33,47 +33,70 @@ final class BasicTests: XCTestCase {
             return .refreshedDependency(temporarilyRefreshedDependency)
         })
 
-        XCTAssertEqual(incrementingResult, .success(expectedNumber))
+        XCTAssertEqual(incrementingResult, expectedNumber)
     }
 
     func testUpdateWithRefreshFailure1() async throws {
         let runner = Dependency<Int>()
 
-        let failedResult = try await runner.run(task: { _ -> TaskResult<Int> in
-            .dependencyRequiresRefresh
-        }, refreshDependency: { _ in
-            .failedRefresh
-        })
-
-        XCTAssertEqual(failedResult, .failedRefresh)
+        let expection = XCTestExpectation()
+        do {
+            let _ = try await runner.run(task: { _ -> TaskResult<Int> in
+                    .dependencyRequiresRefresh
+            }, refreshDependency: { _ in
+                .failedRefresh
+            })
+        } catch {
+            if let error = error as? DependencyError, error.code == .failedRefresh {
+                expection.fulfill()
+            }
+        }
+        wait(for: [expection], timeout: 0.1)
+        
+        
     }
 
     func testUpdateWithRefreshFailure2() async throws {
         let runner = Dependency<Int>()
 
-        let failedResult = try await runner.run(task: { _ -> TaskResult<Int> in
-            .success(10)
-        }, refreshDependency: { _ in
-            .failedRefresh
-        })
+        let expection = XCTestExpectation()
+        do {
+            let _ = try await runner.run(task: { _ -> TaskResult<Int> in
+                    .success(10)
+            }, refreshDependency: { _ in
+                    .failedRefresh
+            })
+        } catch {
+            if let error = error as? DependencyError, error.code == .failedRefresh {
+                expection.fulfill()
+            }
+        }
+        wait(for: [expection], timeout: 0.1)
 
-        XCTAssertEqual(failedResult, .failedRefresh)
     }
 
     func testTimeoutFailure() async throws {
         let runner = Dependency<Int>()
 
-        let timeout = TimeInterval.random(in: 1 ..< 2)
-        let successResult = Int.random(in: 0 ... Int.max)
-        let timeoutFailureResult = try await runner.run(task: { dependency -> TaskResult<Int> in
-            .success(dependency)
-        }, refreshDependency: { _ in
-            try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            return .refreshedDependency(successResult)
-        },
-        timeout: timeout)
+        let expection = XCTestExpectation()
 
-        XCTAssertEqual(timeoutFailureResult, .timeout)
+        do {
+            let timeout = TimeInterval.random(in: 1 ..< 2)
+            let successResult = Int.random(in: 0 ... Int.max)
+            let _ = try await runner.run(
+                task: { dependency -> TaskResult<Int> in
+                        .success(dependency)
+                }, refreshDependency: { _ in
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    return .refreshedDependency(successResult)
+                },
+                timeout: timeout)
+        } catch {
+            if let error = error as? DependencyError, error.code == .timeout {
+                expection.fulfill()
+            }
+        }
+        wait(for: [expection], timeout: 0.1)
     }
 
     func testTimeoutSuccess() async throws {
@@ -88,7 +111,7 @@ final class BasicTests: XCTestCase {
             return .refreshedDependency(successResult)
         },
         timeout: timeout)
-        XCTAssertEqual(timeoutSuccess, .success(successResult))
+        XCTAssertEqual(timeoutSuccess, successResult)
     }
 
     func testContextObject() async throws {
@@ -126,6 +149,6 @@ final class BasicTests: XCTestCase {
 
         let incrementingResult = try await runner.run(context)
 
-        XCTAssertEqual(incrementingResult, .success("\(context.expectedNumber)"))
+        XCTAssertEqual(incrementingResult, "\(context.expectedNumber)")
     }
 }

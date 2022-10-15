@@ -32,24 +32,25 @@ public struct LayeredDependency<OuterDependencyType, InnerDependencyType> {
         refreshInner: (OuterDependencyType, InnerDependencyType?) async throws -> RefreshResult<InnerDependencyType>,
         refreshOuter: (Dependency<InnerDependencyType>, OuterDependencyType?) async throws -> RefreshResult<OuterDependencyType>,
         timeout: TimeInterval? = nil
-    ) async throws -> RunResult<Success> {
+    ) async throws -> Success {
         try await outerRunner.run {
             refreshDependency in
-            let innerResult = try await innerRunner.run(
-                task: {
-                    accessDependency in
-                    try await runBlock(accessDependency)
-                }, refreshDependency: { failedDependency in
-                    try await refreshInner(refreshDependency, failedDependency)
-                }, timeout: timeout
-            )
-            if case .failedRefresh = innerResult {
+            do {
+                let result = try await innerRunner.run(
+                    task: {
+                        accessDependency in
+                        try await runBlock(accessDependency)
+                    }, refreshDependency: { failedDependency in
+                        try await refreshInner(refreshDependency, failedDependency)
+                    }, timeout: timeout
+                )
+                return .success(result)
+            } catch let error as DependencyError where error.code == .failedRefresh {
                 return .dependencyRequiresRefresh
             }
-            return .success(innerResult)
         } refreshDependency: { failedDependency in
             try await refreshOuter(innerRunner, failedDependency)
         }
-        .flatMap { $0 }
+        
     }
 }

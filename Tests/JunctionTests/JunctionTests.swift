@@ -2,127 +2,8 @@
 import XCTest
 
 final class JunctionTests: XCTestCase {
-    struct RDeppie {
-        let refresh: UUID
-    }
 
-    struct Deppie {
-        let access: UUID
-    }
-
-    func testManualOAuth() async throws {
-        let backend = FakeOauth()
-        let refreshRunner = Dependency<RDeppie>()
-        let accessRunner = Dependency<Deppie>()
-        let counter = Counter()
-
-        let maxTime: UInt64 = 10_000_000_000
-
-        for _ in 0 ..< 200 {
-            Task {
-                try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<RunResult<String>> = try! await refreshRunner.run { refreshDependency in
-                    let innerResult: RunResult<String> = try! await accessRunner.run { accessDependency in
-                        let res = await backend.getResource(clientAccessToken: accessDependency.access)
-                        switch res {
-                        case .unauthorised:
-                            return .dependencyRequiresRefresh
-                        case let .ok(string):
-                            return .success(string)
-                        case .updatedToken:
-                            fatalError()
-                        }
-                    } refreshDependency: { _ in
-                        let res = await backend.refresh(clientRefreshToken: refreshDependency.refresh)
-                        switch res {
-                        case .unauthorised:
-                            return RefreshResult.failedRefresh
-                        case .ok:
-                            fatalError()
-                        case let .updatedToken(uuid):
-                            return RefreshResult.refreshedDependency(Deppie(access: uuid))
-                        }
-                    }
-                    if case .failedRefresh = innerResult {
-                        return .dependencyRequiresRefresh
-                    }
-                    return .success(innerResult)
-                } refreshDependency: { _ in
-                    let rDeppie = await backend.login(password: "PWD")
-                    try await accessRunner.reset()
-                    return RefreshResult.refreshedDependency(.init(refresh: rDeppie.token))
-                }
-                switch result {
-                case .success:
-                    await counter.increment()
-                case .failedRefresh:
-                    fatalError("Update failed")
-                case .timeout:
-                    fatalError("Timed out")
-                }
-            }
-        }
-        try await Task.sleep(nanoseconds: maxTime + 5_000_000_000)
-        print(await counter.getCount())
-    }
-
-    func testDedicatedOAuth() async throws {
-        let backend = FakeOauth()
-        let counter = Counter()
-
-        let maxTime: UInt64 = 10_000_000_000
-
-        struct Token {
-            let value: UUID
-        }
-
-        let oauthRunner = LayeredDependency<Token, Token>(threadSleep: 50_000_000, defaultTimeout: 10)
-
-        for _ in 0 ..< 200 {
-            Task {
-                try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<String> = try! await oauthRunner.run { accessDependency in
-                    switch await backend.getResource(clientAccessToken: accessDependency.value) {
-                    case .unauthorised:
-                        return .dependencyRequiresRefresh
-                    case let .ok(string):
-                        return .success(string)
-                    case .updatedToken:
-                        fatalError()
-                    }
-                } refreshInner: { refreshDependency, failedDependency in
-                    switch await backend.refresh(clientRefreshToken: refreshDependency.value) {
-                    case .unauthorised:
-                        return RefreshResult.failedRefresh
-                    case .ok:
-                        fatalError()
-                    case let .updatedToken(uuid):
-                        return RefreshResult.refreshedDependency(.init(value: uuid))
-                    }
-                } refreshOuter: { innerRunner, failedDependency in
-                    let refreshToken = await backend.login(password: "PWD")
-                    do {
-                        try await innerRunner.reset()
-                    } catch {
-                        return .failedRefresh
-                    }
-                    return RefreshResult.refreshedDependency(.init(value: refreshToken.token))
-                }
-                switch result {
-                case .success:
-                    await counter.increment()
-                case .failedRefresh:
-                    fatalError("Update failed")
-                case .timeout:
-                    fatalError("Timed out")
-                }
-            }
-        }
-        try await Task.sleep(nanoseconds: maxTime + 5_000_000_000)
-        print(await counter.getCount())
-    }
-
-    func testDedicatedOAuth2() async throws {
+    func testDedicatedOAuthWithPureRefresh() async throws {
         let backend = FakeOauth()
         let counter = Counter()
 
@@ -132,38 +13,37 @@ final class JunctionTests: XCTestCase {
 
         for _ in 0 ..< 200 {
             Task {
-                try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<String> = try! await oauthRunner.run({
-                    accessDependency in
-                    switch await backend.getResource(clientAccessToken: accessDependency.token) {
-                    case .unauthorised:
-                        return .dependencyRequiresRefresh
-                    case let .ok(string):
-                        return .success(string)
-                    case .updatedToken:
-                        fatalError()
-                    }
-                }, refreshAccessToken: {
-                    refreshDependency, failedAccessToken in
-                    switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
-                    case .unauthorised:
-                        return RefreshResult.failedRefresh
-                    case .ok:
-                        fatalError()
-                    case let .updatedToken(uuid):
-                        return RefreshResult.refreshedDependency(.init(token: uuid))
-                    }
-                }, refreshRefreshToken: { failedRefreshToken in
-                    let backendRefreshToken = await backend.login(password: "PWD")
-                    return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: nil))
-                })
-                switch result {
-                case .success:
+                do {
+                    try await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
+                    let _:String = try! await oauthRunner.run({
+                        accessDependency in
+                        switch await backend.getResource(clientAccessToken: accessDependency.token) {
+                            case .unauthorised:
+                                return .dependencyRequiresRefresh
+                            case let .ok(string):
+                                return .success(string)
+                            case .updatedToken:
+                                fatalError()
+                        }
+                    }, refreshAccessToken: {
+                        refreshDependency, failedAccessToken in
+                        switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
+                            case .unauthorised:
+                                return RefreshResult.failedRefresh
+                            case .ok:
+                                fatalError()
+                            case let .updatedToken(uuid):
+                                return RefreshResult.refreshedDependency(.init(token: uuid))
+                        }
+                    }, refreshRefreshToken: { failedRefreshToken in
+                        let backendRefreshToken = await backend.login(password: "PWD")
+                        return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: nil))
+                    })
                     await counter.increment()
-                case .failedRefresh:
-                    fatalError("Update failed")
-                case .timeout:
-                    fatalError("Timed out")
+                } catch let error as DependencyError where error.code == .failedRefresh {
+                    fatalError("Refresh failed")
+                } catch let error as DependencyError where error.code == .timeout {
+                    fatalError("Timeout")
                 }
             }
         }
@@ -182,38 +62,38 @@ final class JunctionTests: XCTestCase {
 
         for _ in 0 ..< 500 {
             Task {
-                try! await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                let result: RunResult<String> = try! await oauthRunner.run({
-                    accessDependency in
-                    switch await backend.getResource(clientAccessToken: accessDependency.token) {
-                    case .unauthorised:
-                        return .dependencyRequiresRefresh
-                    case let .ok(string):
-                        return .success(string)
-                    case .updatedToken:
-                        fatalError()
-                    }
-                }, refreshAccessToken: {
-                    refreshDependency, failedAccessToken in
-                    switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
-                    case .unauthorised:
-                        return RefreshResult.failedRefresh
-                    case .ok:
-                        fatalError()
-                    case let .updatedToken(uuid):
-                        return RefreshResult.refreshedDependency(.init(token: uuid))
-                    }
-                }, refreshRefreshToken: {
-                    failedRefreshToken in
-                    let (backendRefreshToken, backendAccessToken) = await backend.loginWithAccess(password: "PWD")
-                    return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: .init(token: backendAccessToken.token)))
-                })
-                switch result {
-                case .success:
+                do {
+                    try await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
+                    let _:String = try! await oauthRunner.run({
+                        accessDependency in
+                        switch await backend.getResource(clientAccessToken: accessDependency.token) {
+                            case .unauthorised:
+                                return .dependencyRequiresRefresh
+                            case let .ok(string):
+                                return .success(string)
+                            case .updatedToken:
+                                fatalError()
+                        }
+                    }, refreshAccessToken: {
+                        refreshDependency, failedAccessToken in
+                        switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
+                            case .unauthorised:
+                                return RefreshResult.failedRefresh
+                            case .ok:
+                                fatalError()
+                            case let .updatedToken(uuid):
+                                return RefreshResult.refreshedDependency(.init(token: uuid))
+                        }
+                    }, refreshRefreshToken: {
+                        failedRefreshToken in
+                        let (backendRefreshToken, backendAccessToken) = await backend.loginWithAccess(password: "PWD")
+                        return RefreshResult.refreshedDependency(.init(token: backendRefreshToken.token, accessToken: .init(token: backendAccessToken.token)))
+                    })
                     await counter.increment()
-                case .failedRefresh:
-                    fatalError("Update failed")
-                case .timeout:
+
+                } catch let error as DependencyError where error.code == .failedRefresh {
+                    fatalError("Refresh failed")
+                } catch let error as DependencyError where error.code == .timeout {
                     await timeOutCounter.increment()
                 }
             }

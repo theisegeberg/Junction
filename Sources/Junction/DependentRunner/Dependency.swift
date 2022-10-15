@@ -2,49 +2,6 @@
 import Foundation
 
 public actor Dependency<DependencyType> {
-    
-    private class VersionedDependency {
-        private var latest: DependencyType?
-        private var version: Int
-        private var isFailed: Bool
-
-        init(dependency: DependencyType? = nil) {
-            latest = dependency
-            version = 0
-            isFailed = false
-        }
-
-        func refresh(_ dependency: DependencyType?) {
-            if version == Int.max {
-                version = 0
-            }
-            isFailed = false
-            version = version + 1
-            latest = dependency
-        }
-        
-        func getVersion() -> Int {
-            version
-        }
-        
-        func getLatest() -> DependencyType? {
-            latest
-        }
-        
-        func reset() {
-            latest = nil
-            version = 0
-            isFailed = false
-        }
-        
-        func fail() {
-            isFailed = true
-        }
-        
-        func getIsFailed() -> Bool {
-            isFailed
-        }
-    }
 
     private enum State {
         case ready
@@ -53,7 +10,7 @@ public actor Dependency<DependencyType> {
     }
 
     private var state: State = .ready
-    private var dependency: VersionedDependency
+    private var dependency: VersionStore<DependencyType>
     private var threadSleep: UInt64
     private var defaultTimeout: TimeInterval
 
@@ -70,7 +27,7 @@ public actor Dependency<DependencyType> {
         threadSleep: UInt64 = 100_000_000,
         defaultTimeout: TimeInterval = 10
     ) {
-        self.dependency = VersionedDependency(dependency: dependency)
+        self.dependency = VersionStore(dependency: dependency)
         self.threadSleep = threadSleep
         self.defaultTimeout = defaultTimeout
     }
@@ -80,7 +37,7 @@ public actor Dependency<DependencyType> {
     /// - Returns: The result of the execution.
     public func run<Success>(
         _ proxy: any DependencyProxy<Success, DependencyType>
-    ) async throws -> RunResult<Success> {
+    ) async throws -> Success {
         try await run(task: proxy.run, refreshDependency: proxy.refresh, timeout: proxy.timeout())
     }
 
@@ -95,7 +52,7 @@ public actor Dependency<DependencyType> {
         task: (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
         refreshDependency: (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         timeout: TimeInterval? = nil
-    ) async throws -> RunResult<Success> {
+    ) async throws -> Success {
         try await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
     }
 
@@ -104,28 +61,28 @@ public actor Dependency<DependencyType> {
         refreshDependency: (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         started: Date,
         timeout: TimeInterval?
-    ) async throws -> RunResult<Success> {
+    ) async throws -> Success {
         while state == .refreshing {
             try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
             if Date().timeIntervalSince(started) > (timeout ?? defaultTimeout) {
-                return .timeout
+                throw DependencyError(code: .timeout)
             }
         }
 
         guard isNotTimedOut(started: started, timeout: timeout) else {
-            return .timeout
+            throw DependencyError(code: .timeout)
         }
 
         if state == .failedRefresh {
-            return .failedRefresh
+            throw DependencyError(code: .failedRefresh)
         }
 
-        if dependency.getIsFailed() || dependency.getLatest() == nil {
+        if dependency.getIsInvalid() || dependency.getLatest() == nil {
             state = .refreshing
             switch try await refreshDependency(dependency.getLatest()) {
                 case let .refreshedDependency(refreshed):
-                    dependency.refresh(refreshed)
+                    dependency.newVersion(refreshed)
                     state = .ready
                     return try await run(
                         task: task,
@@ -135,12 +92,12 @@ public actor Dependency<DependencyType> {
                     )
                 case .failedRefresh:
                     state = .failedRefresh
-                    return .failedRefresh
+                    throw DependencyError(code: .failedRefresh)
             }
         }
         
         guard let actualDependency = dependency.getLatest() else {
-            dependency.fail()
+            dependency.invalidate()
             return try await run(
                 task: task,
                 refreshDependency: refreshDependency,
@@ -156,7 +113,7 @@ public actor Dependency<DependencyType> {
                 /// while we were performing our task. If the lock changed then another process
                 /// changed it, and we should just move on.
                 if versionAtRun == dependency.getVersion() {
-                    dependency.fail()
+                    dependency.invalidate()
                 }
                 return try await run(
                     task: task,
@@ -165,7 +122,7 @@ public actor Dependency<DependencyType> {
                     timeout: timeout
                 )
             case let .success(success):
-                return .success(success)
+                return success
         }
     }
     
@@ -180,7 +137,7 @@ public actor Dependency<DependencyType> {
     /// - Parameter freshDependency: The new dependency.
     public func refresh(dependency freshDependency: DependencyType) async throws {
         try await stall()
-        dependency.refresh(freshDependency)
+        dependency.newVersion(freshDependency)
         state = .ready
     }
     
