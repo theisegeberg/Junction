@@ -19,27 +19,31 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     }
 
     public func run<Success>(
-        _ runBlock: (AccessToken) async throws -> TaskResult<Success>,
+        task: (AccessToken) async throws -> TaskResult<Success>,
         refreshAccessToken: (RefreshToken, AccessToken?) async throws -> RefreshResult<AccessToken>,
         refreshRefreshToken: (RefreshToken?) async throws -> RefreshResult<RefreshToken>
     ) async throws -> Success {
-        try await dependency.run({
-            accessDependency in
-            try await runBlock(accessDependency)
-        }, refreshInner: { refreshDependency, failedAccessToken in
-            try await refreshAccessToken(refreshDependency, failedAccessToken)
-        }, refreshOuter: { accessRunner, failedRefreshToken in
-            switch try await refreshRefreshToken(failedRefreshToken) {
-            case .failedRefresh:
-                return .failedRefresh
-            case let .refreshedDependency(refreshToken):
-                if let accessToken = refreshToken.accessToken {
-                    try await accessRunner.refresh(dependency: accessToken)
-                } else {
-                    try await accessRunner.reset()
+        try await dependency.run(
+            task: {
+                accessDependency in
+                try await task(accessDependency)
+            },
+            refreshInner: { refreshDependency, failedAccessToken in
+                try await refreshAccessToken(refreshDependency, failedAccessToken)
+            },
+            refreshOuter: { accessRunner, failedRefreshToken in
+                switch try await refreshRefreshToken(failedRefreshToken) {
+                case .failedRefresh:
+                    return .failedRefresh
+                case let .refreshedDependency(refreshToken):
+                    if let accessToken = refreshToken.accessToken {
+                        try await accessRunner.refresh(dependency: accessToken)
+                    } else {
+                        try await accessRunner.reset()
+                    }
+                    return .refreshedDependency(refreshToken)
                 }
-                return .refreshedDependency(refreshToken)
             }
-        })
+        )
     }
 }

@@ -1,6 +1,7 @@
 
 import Foundation
 
+/// A private class to hold on to versions of `Dependency` to avoid race conditions in complex scenarios.
 class VersionStore<VersionType> {
     private var latest: VersionType?
     private var version: Int

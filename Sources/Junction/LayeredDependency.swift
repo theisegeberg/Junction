@@ -7,12 +7,12 @@ import Foundation
 ///
 /// These concepts are encapsulated in the terms `OuterDependency` and `InnerDependency`.
 public struct LayeredDependency<OuterDependencyType, InnerDependencyType> {
-    let outerRunner: Dependency<OuterDependencyType>
-    let innerRunner: Dependency<InnerDependencyType>
+    let outerDependency: Dependency<OuterDependencyType>
+    let innerDependency: Dependency<InnerDependencyType>
 
     public init(outerDependency: OuterDependencyType? = nil, innerDependency: InnerDependencyType? = nil, threadSleep: UInt64, defaultTimeout: TimeInterval) {
-        outerRunner = .init(dependency: outerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
-        innerRunner = .init(dependency: innerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
+        self.outerDependency = .init(dependency: outerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
+        self.innerDependency = .init(dependency: innerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
     }
 
     /// Runs a task that has a dependency which has another dependency.
@@ -28,18 +28,18 @@ public struct LayeredDependency<OuterDependencyType, InnerDependencyType> {
     ///   - timeout: The seconds the task may run before actively cancelling.
     /// - Returns: The result of the `runBlock` wrapped in a `RunResult`
     public func run<Success>(
-        _ runBlock: (InnerDependencyType) async throws -> TaskResult<Success>,
+        task: (InnerDependencyType) async throws -> TaskResult<Success>,
         refreshInner: (OuterDependencyType, InnerDependencyType?) async throws -> RefreshResult<InnerDependencyType>,
         refreshOuter: (Dependency<InnerDependencyType>, OuterDependencyType?) async throws -> RefreshResult<OuterDependencyType>,
         timeout: TimeInterval? = nil
     ) async throws -> Success {
-        try await outerRunner.run {
+        try await outerDependency.run {
             refreshDependency in
             do {
-                let result = try await innerRunner.run(
+                let result = try await innerDependency.run(
                     task: {
                         accessDependency in
-                        try await runBlock(accessDependency)
+                        try await task(accessDependency)
                     }, refreshDependency: { failedDependency in
                         try await refreshInner(refreshDependency, failedDependency)
                     }, timeout: timeout
@@ -49,7 +49,7 @@ public struct LayeredDependency<OuterDependencyType, InnerDependencyType> {
                 return .dependencyRequiresRefresh
             }
         } refreshDependency: { failedDependency in
-            try await refreshOuter(innerRunner, failedDependency)
+            try await refreshOuter(innerDependency, failedDependency)
         }
     }
 }
