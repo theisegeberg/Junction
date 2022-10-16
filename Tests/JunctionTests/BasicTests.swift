@@ -42,7 +42,7 @@ final class BasicTests: XCTestCase {
         let expection = XCTestExpectation()
         do {
             let _ = try await runner.run(task: { _ -> TaskResult<Int> in
-                    .dependencyRequiresRefresh
+                .dependencyRequiresRefresh
             }, refreshDependency: { _ in
                 .failedRefresh
             })
@@ -52,8 +52,6 @@ final class BasicTests: XCTestCase {
             }
         }
         wait(for: [expection], timeout: 0.1)
-        
-        
     }
 
     func testUpdateWithRefreshFailure2() async throws {
@@ -62,9 +60,9 @@ final class BasicTests: XCTestCase {
         let expection = XCTestExpectation()
         do {
             let _ = try await runner.run(task: { _ -> TaskResult<Int> in
-                    .success(10)
+                .success(10)
             }, refreshDependency: { _ in
-                    .failedRefresh
+                .failedRefresh
             })
         } catch {
             if let error = error as? DependencyError, error.code == .failedRefresh {
@@ -72,7 +70,6 @@ final class BasicTests: XCTestCase {
             }
         }
         wait(for: [expection], timeout: 0.1)
-
     }
 
     func testTimeoutFailure() async throws {
@@ -85,12 +82,13 @@ final class BasicTests: XCTestCase {
             let successResult = Int.random(in: 0 ... Int.max)
             let _ = try await runner.run(
                 task: { dependency -> TaskResult<Int> in
-                        .success(dependency)
+                    .success(dependency)
                 }, refreshDependency: { _ in
                     try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                     return .refreshedDependency(successResult)
                 },
-                timeout: timeout)
+                timeout: timeout
+            )
         } catch {
             if let error = error as? DependencyError, error.code == .timeout {
                 expection.fulfill()
@@ -112,43 +110,5 @@ final class BasicTests: XCTestCase {
         },
         timeout: timeout)
         XCTAssertEqual(timeoutSuccess, successResult)
-    }
-
-    func testContextObject() async throws {
-        let runner = Dependency<Int>()
-
-        class Context: DependencyProxy {
-            typealias Success = String
-            typealias Dependency = Int
-
-            let expectedNumber: Int = 3
-            var temporarilyRefreshedDependency: Int = 0
-
-            func timeout() -> TimeInterval? {
-                nil
-            }
-
-            func run(_ dependency: Int) async throws -> (Junction.TaskResult<String>) {
-                XCTAssertLessThanOrEqual(dependency, expectedNumber)
-                if dependency == expectedNumber {
-                    return .success("\(dependency)")
-                } else {
-                    return .dependencyRequiresRefresh
-                }
-            }
-
-            func refresh(failingDependency: Int?) async throws -> (RefreshResult<Int>) {
-                temporarilyRefreshedDependency = temporarilyRefreshedDependency + 1
-                XCTAssertLessThanOrEqual(temporarilyRefreshedDependency, expectedNumber)
-                return .refreshedDependency(temporarilyRefreshedDependency)
-            }
-            
-        }
-
-        let context = Context()
-
-        let incrementingResult = try await runner.run(context)
-
-        XCTAssertEqual(incrementingResult, "\(context.expectedNumber)")
     }
 }

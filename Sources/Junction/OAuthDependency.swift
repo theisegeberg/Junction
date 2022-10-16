@@ -19,12 +19,6 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     }
 
     public func run<Success>(
-        _ proxy: any OAuthDependencyProxy<Success, RefreshToken, AccessToken>
-    ) async throws -> Success {
-        try await run(proxy.run, refreshAccessToken: proxy.refreshAccessToken, refreshRefreshToken: proxy.refreshRefreshToken)
-    }
-
-    public func run<Success>(
         _ runBlock: (AccessToken) async throws -> TaskResult<Success>,
         refreshAccessToken: (RefreshToken, AccessToken?) async throws -> RefreshResult<AccessToken>,
         refreshRefreshToken: (RefreshToken?) async throws -> RefreshResult<RefreshToken>

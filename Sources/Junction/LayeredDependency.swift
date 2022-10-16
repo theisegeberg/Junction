@@ -14,7 +14,7 @@ public struct LayeredDependency<OuterDependencyType, InnerDependencyType> {
         outerRunner = .init(dependency: outerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
         innerRunner = .init(dependency: innerDependency, threadSleep: threadSleep, defaultTimeout: defaultTimeout)
     }
-    
+
     /// Runs a task that has a dependency which has another dependency.
     ///
     /// Tries to run `B -> C`, with a closure that can provide `A -> B`, and a closure that can provide `Dependency<B> -> A`.
@@ -51,6 +51,5 @@ public struct LayeredDependency<OuterDependencyType, InnerDependencyType> {
         } refreshDependency: { failedDependency in
             try await refreshOuter(innerRunner, failedDependency)
         }
-        
     }
 }
