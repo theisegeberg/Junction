@@ -21,7 +21,8 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     public func run<Success>(
         task: (AccessToken) async throws -> TaskResult<Success>,
         refreshAccessToken: (RefreshToken, AccessToken?) async throws -> RefreshResult<AccessToken>,
-        refreshRefreshToken: (RefreshToken?) async throws -> RefreshResult<RefreshToken>
+        refreshRefreshToken: (RefreshToken?) async throws -> RefreshResult<RefreshToken>,
+        timeout: TimeInterval? = nil
     ) async throws -> Success {
         try await dependency.run(
             task: {
@@ -43,7 +44,8 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
                     }
                     return .refreshedDependency(refreshToken)
                 }
-            }
+            },
+            timeout: timeout
         )
     }
 }
