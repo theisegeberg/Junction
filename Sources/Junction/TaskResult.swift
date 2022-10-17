@@ -6,4 +6,6 @@ public enum TaskResult<Success> {
     case success(Success)
     /// The used dependency requires a refresh, performed by `Dependency`
     case dependencyRequiresRefresh
+    /// This causes all calls on the current `Dependency` to throw a `DependencyError` with code .critical.
+    case criticalError(underlyingError: Error?)
 }

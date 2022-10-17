@@ -1,16 +1,33 @@
 
 import Foundation
 
-//TODO: Add a task result that immediately throws the same error across all current requests.
-//TODO: Add a protocol based storage thing which enables dependencies to be stored and accessed from outside.
-//TODO: Write a short article about it.
+// TODO: Add a protocol based storage thing which enables dependencies to be stored and accessed from outside.
+// TODO: Write a short article about it.
 
 /// An `actor` that handles both providing and creating a dependency. It can handle many asyncronous tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh will be attemtped while all the tasks are put in a holding pattern. Once the dependency has been refreshed all the tasks will be retried.
 public actor Dependency<DependencyType> {
-    private enum State {
+    private enum State: Equatable {
+        static func == (lhs: Dependency<DependencyType>.State, rhs: Dependency<DependencyType>.State) -> Bool {
+            switch (lhs, rhs) {
+            case (.ready, .ready), (.refreshing, .refreshing), (.failedRefresh, .failedRefresh), (.criticalError, .criticalError):
+                return true
+            default:
+                return false
+            }
+        }
+
         case ready
         case refreshing
         case failedRefresh
+        case criticalError(Error?)
+
+        var errorInCritical: Error? {
+            if case let .criticalError(error) = self {
+                return error
+            } else {
+                return nil
+            }
+        }
     }
 
     private var state: State = .ready
@@ -76,6 +93,10 @@ public actor Dependency<DependencyType> {
             }
         }
 
+        if case let .criticalError(error) = state {
+            throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
+        }
+
         guard state != .failedRefresh else {
             throw DependencyError(code: .failedRefresh)
         }
@@ -130,6 +151,12 @@ public actor Dependency<DependencyType> {
                 started: started,
                 timeout: timeout
             )
+        case let .criticalError(underlyingError: error):
+            guard let precedingCriticalError = state.errorInCritical else {
+                state = .criticalError(error)
+                throw DependencyError(code: .critical(wasThrownByThisTask: true, error: error))
+            }
+            throw DependencyError(code: .critical(wasThrownByThisTask: false, error: precedingCriticalError))
         }
     }
 
