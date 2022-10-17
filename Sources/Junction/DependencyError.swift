@@ -5,7 +5,9 @@ public struct DependencyError: LocalizedError, Equatable {
     public enum ErrorCode: Equatable {
         public static func == (lhs: DependencyError.ErrorCode, rhs: DependencyError.ErrorCode) -> Bool {
             switch (lhs, rhs) {
-            case (.timeout, .timeout), (.failedRefresh, .failedRefresh), (.critical, .critical):
+            case (.timeout, .timeout),
+                    (.failedRefresh, .failedRefresh),
+                    (.critical, .critical):
                 return true
             default:
                 return false
@@ -21,17 +23,7 @@ public struct DependencyError: LocalizedError, Equatable {
     }
 
     public let code: ErrorCode
-    public var errorDescription: String {
-        switch code {
-        case .timeout:
-            return "Request timed out"
-        case .failedRefresh:
-            return "Refresh of dependency failed"
-        case .critical:
-            return "Critical error"
-        }
-    }
-
+    
     public init(code: ErrorCode) {
         self.code = code
     }

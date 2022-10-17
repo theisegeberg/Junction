@@ -1,9 +1,6 @@
 
 import Foundation
 
-// TODO: Add a protocol based storage thing which enables dependencies to be stored and accessed from outside.
-// TODO: Write a short article about it.
-
 /// An `actor` that handles both providing and creating a dependency. It can handle many asyncronous tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh will be attemtped while all the tasks are put in a holding pattern. Once the dependency has been refreshed all the tasks will be retried.
 public actor Dependency<DependencyType> {
     private enum State: Equatable {
