@@ -1,9 +1,9 @@
 
 import Foundation
 
-//TODO: Do a test implementation with the Get library.
-
 /// An `actor` that handles both providing and creating a dependency. It can handle many asyncronous tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh will be attemtped while all the tasks are put in a holding pattern. Once the dependency has been refreshed all the tasks will be retried.
+///
+/// - Warning: This code is complex. That's the nature of both recursive and asynchronous code, and this is both. I've gone to great lengths to make the compiler prove it's functionality. Hence all the generics.
 public actor Dependency<DependencyType> {
     private enum State: Equatable {
         static func == (lhs: Dependency<DependencyType>.State, rhs: Dependency<DependencyType>.State) -> Bool {
@@ -49,11 +49,10 @@ public actor Dependency<DependencyType> {
     ///   - threadSleep: When a `Dependency` is refreshing, then other tasks will be waiting. While waiting then it will retry periodically with a delay. `threadSleep` is the delay in nano seconds.
     ///   - defaultTimeout: A task that is stuck in a refresh -> retry loop, or is just experiencing slow refreshes will finally timeout. This is not the same as a timeout occured inside the actual task (when performing a task on `URLSession`  for example). This is an extra check placed in the `Dependency` for cases where some given task is too slow.
     public init(
-        dependency: DependencyType? = nil,
         threadSleep: UInt64 = 100_000_000,
         defaultTimeout: TimeInterval = 10
     ) {
-        self.dependency = VersionStore(dependency: dependency)
+        self.dependency = VersionStore(dependency: nil)
         self.threadSleep = threadSleep
         self.defaultTimeout = defaultTimeout
     }
@@ -77,6 +76,42 @@ public actor Dependency<DependencyType> {
     ) async throws -> Success {
         try await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
     }
+    
+    public func mapRun<InnerDependency,Success>(
+        dependency:Dependency<InnerDependency>,
+        task:(DependencyType, InnerDependency) async throws -> TaskResult<Success>,
+        innerRefresh:(DependencyType, InnerDependency?) async throws -> (RefreshResult<InnerDependency>),
+        outerRefresh:(Dependency<InnerDependency>, DependencyType?) async throws -> (RefreshResult<DependencyType>),
+        timeout:TimeInterval? = nil
+    ) async throws -> Success
+    {
+        try await self.run (
+            task: {
+                outerDependency -> TaskResult<Success> in
+                do {
+                    let result = try await dependency
+                        .run(
+                            task: { innerDependency -> TaskResult<Success> in
+                                return try await task(outerDependency, innerDependency)
+                            },
+                            refreshDependency: { innerDependency in
+                                return try await innerRefresh(outerDependency, innerDependency)
+                            },
+                            timeout: timeout
+                        )
+                    return .success(result)
+                } catch let error as DependencyError where error.code == .failedRefresh {
+                    return .dependencyRequiresRefresh
+                }
+            },
+            refreshDependency: {
+                outerDependency in
+                try await outerRefresh(dependency,outerDependency)
+            },
+            timeout: timeout
+        )
+    }
+    
 
     private func run<Success>(
         task: (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
@@ -184,4 +219,5 @@ public actor Dependency<DependencyType> {
     private func isNotTimedOut(started: Date, timeout: TimeInterval?) -> Bool {
         Date().timeIntervalSince(started) < (timeout ?? defaultTimeout)
     }
+
 }

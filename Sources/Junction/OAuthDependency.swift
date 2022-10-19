@@ -1,7 +1,7 @@
 
 import Foundation
 
-/// A specialised `LayeredDependency` that handles OAuth like scenarios.
+/// A manager for two `Dependency` objects that handles OAuth like scenarios.
 public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     public struct RefreshToken {
         let token: RefreshTokenType
@@ -12,10 +12,13 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
         let token: AccessTokenType
     }
 
-    private let dependency: LayeredDependency<RefreshToken, AccessToken>
+    private let refreshDependency: Dependency<RefreshToken>
+    private let accessDependency: Dependency<AccessToken>
 
-    public init(refreshToken: RefreshToken? = nil, accessToken: AccessToken? = nil, threadSleep: UInt64, timeout: TimeInterval) {
-        dependency = .init(outerDependency: refreshToken, innerDependency: accessToken, threadSleep: threadSleep, defaultTimeout: timeout)
+    
+    public init(threadSleep: UInt64, timeout: TimeInterval) {
+        refreshDependency = .init(threadSleep: threadSleep, defaultTimeout: timeout)
+        accessDependency = .init(threadSleep: threadSleep, defaultTimeout: timeout)
     }
 
     public func run<Success>(
@@ -24,28 +27,26 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
         refreshRefreshToken: (RefreshToken?) async throws -> RefreshResult<RefreshToken>,
         timeout: TimeInterval? = nil
     ) async throws -> Success {
-        try await dependency.run(
-            task: {
-                accessDependency in
+        try await refreshDependency
+            .mapRun(dependency: accessDependency, task: {
+                _, accessDependency in
                 try await task(accessDependency)
-            },
-            refreshInner: { refreshDependency, failedAccessToken in
+            }, innerRefresh: {
+                refreshDependency, failedAccessToken in
                 try await refreshAccessToken(refreshDependency, failedAccessToken)
-            },
-            refreshOuter: { accessRunner, failedRefreshToken in
+            }, outerRefresh: {
+                accessRunner, failedRefreshToken in
                 switch try await refreshRefreshToken(failedRefreshToken) {
-                case .failedRefresh:
-                    return .failedRefresh
-                case let .refreshedDependency(refreshToken):
-                    if let accessToken = refreshToken.accessToken {
-                        try await accessRunner.refresh(dependency: accessToken)
-                    } else {
-                        try await accessRunner.reset()
-                    }
-                    return .refreshedDependency(refreshToken)
+                    case .failedRefresh:
+                        return .failedRefresh
+                    case let .refreshedDependency(refreshToken):
+                        if let accessToken = refreshToken.accessToken {
+                            try await accessRunner.refresh(dependency: accessToken)
+                        } else {
+                            try await accessRunner.reset()
+                        }
+                        return .refreshedDependency(refreshToken)
                 }
-            },
-            timeout: timeout
-        )
+            })
     }
 }
