@@ -1,6 +1,8 @@
 
 import Foundation
 
+//TODO: Do a test implementation with the Get library.
+
 /// An `actor` that handles both providing and creating a dependency. It can handle many asyncronous tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh will be attemtped while all the tasks are put in a holding pattern. Once the dependency has been refreshed all the tasks will be retried.
 public actor Dependency<DependencyType> {
     private enum State: Equatable {
