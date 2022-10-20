@@ -8,15 +8,16 @@ This small library solves the problem posed OAuth style flows where multiple lay
 In OAuth there is some sort of login that will produce an authorization code. The authorization code can be exchanged for a refresh token. And this refresh token can be used to make short lived access tokens. An access token can be used to access resources from a server.
 
 The solution provided here gives the following benefits:
-1. *Full chain retry and resume for OAuth:* If a call fails, then it can refresh the access token with the refresh token, and then retry the call. If the refresh call fails, it can update the refresh token with a new login from the user, and retry all the way down.
-2. *Full concurrency support:* If multiple calls all fail at their updates simultaneously, only one refresh will be attempted. This also goes for layered dependencies.
-3. *Multi-layer retry support:* Multiple dependencies can be nested, with support for the child dependencies being reset when a parent dependency is updated. 
-4. *Capture safe:* No closures are ever stored, so it's safe to use `self` and anything else here.
-5. *Unassuming:* No strict reference to any transport layer concepts like HTTPS. And no references to encoding schemes like JSON. Also does provides both closure based and protocol based call site.
-6. *Location agnostic:* Can be placed at either the top: Where the call is being performed closer to the outer edge of the code. Or hidden away at the inner core of the logic that needs to be rerouted. Doesn't provide any framework, just a few concepts that wraps other code.
-7. *Flexible:* Can start from a point of any existing dependencies. Even a complex scenario like having an outer, middle and inner dependency, where only the middle is known in advance, can be resumed.
-8. *Portable*: Tiny code base that can easily be moved into your project without any problems.
-9. *Supportive:* Supports Catalina iOS 13.
+- If multiple calls all fail at their updates simultaneously, only one refresh will be attempted. This also goes for layered dependencies.
+- A single call may fail the all simultanous calls.
+- Multiple dependencies can be nested, with support for the child dependencies being reset when a parent dependency is updated. 
+- No closures are ever stored, so it's safe to use `self` and anything else here.
+- No strict reference to any transport layer concepts like HTTPS. And no references to encoding schemes like JSON. Also does provides both closure based and protocol based call site.
+- Can be placed at either the top: Where the call is being performed closer to the outer edge of the code. Or hidden away at the inner core of the logic that needs to be rerouted. Doesn't provide any framework, just a few concepts that wraps other code.
+- Can start from a point of any existing dependencies. Even a complex scenario like having an outer, middle and inner dependency, where only the middle is known in advance, can be resumed.
+- Tiny code base that can easily be moved into your project without any problems.
+- Supports Catalina and iOS 13.
+- Supports Swift 6.0 strict concurrency with Sendable.
 
 ---
 

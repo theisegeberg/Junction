@@ -132,27 +132,14 @@ public actor Dependency<DependencyType:Sendable> {
         while state == .refreshing {
             try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
-            guard isNotTimedOut(started: started, timeout: timeout) else {
-                throw DependencyError(code: .timeout)
-            }
-        }
-
-        if case let .criticalError(error) = state {
-            throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
-        }
-
-        guard state != .failedRefresh else {
-            throw DependencyError(code: .failedRefresh)
-        }
-
-        guard isNotTimedOut(started: started, timeout: timeout) else {
-            throw DependencyError(code: .timeout)
+            try validateTaskStateAndTimeout(started: started, timeout: timeout)
         }
 
         guard isReadyToRunTask else {
             state = .refreshing
             switch try await refreshDependency(dependency.getLatest()) {
             case let .refreshedDependency(refreshed):
+                try validateTaskStateAndTimeout(started: started, timeout: timeout)
                 dependency.newVersion(refreshed)
                 state = .ready
                 return try await run(
@@ -178,7 +165,9 @@ public actor Dependency<DependencyType:Sendable> {
         }
 
         let versionAtRun = dependency.getVersion()
-        switch try await task(actualDependency) {
+        let taskResult = try await task(actualDependency)
+        try validateTaskStateAndTimeout(started: started, timeout: timeout)
+        switch taskResult {
         case let .success(success):
             return success
         case .dependencyRequiresRefresh:
@@ -196,11 +185,8 @@ public actor Dependency<DependencyType:Sendable> {
                 timeout: timeout
             )
         case let .criticalError(underlyingError: error):
-            guard let precedingCriticalError = state.errorInCritical else {
-                state = .criticalError(error)
-                throw DependencyError(code: .critical(wasThrownByThisTask: true, error: error))
-            }
-            throw DependencyError(code: .critical(wasThrownByThisTask: false, error: precedingCriticalError))
+            state = .criticalError(error)
+            throw DependencyError(code: .critical(wasThrownByThisTask: true, error: error))
         }
     }
 
@@ -218,14 +204,46 @@ public actor Dependency<DependencyType:Sendable> {
         dependency.newVersion(freshDependency)
         state = .ready
     }
-
+    
     private func stall() async throws {
         while state == .refreshing {
             try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
         }
     }
+    
+    private func validateTaskStateAndTimeout(started:Date, timeout:TimeInterval?) throws {
+        switch state {
+            case .failedRefresh:
+                throw DependencyError(code: .failedRefresh)
+            case .criticalError(let error):
+                throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
+            case .refreshing, .ready:
+                break
+        }
+        guard isNotTimedOut(started: started, timeout: timeout) else {
+            throw DependencyError(code: .timeout)
+        }
+    }
+    
+    private func throwRefreshFailedError() throws {
+        guard state != .failedRefresh else {
+            throw DependencyError(code: .failedRefresh)
+        }
+    }
+    
+    private func throwCriticalError() throws {
+        if case let .criticalError(error) = state {
+            throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
+        }
+    }
 
+    public func throwTimeoutError(started: Date, timeout: TimeInterval?) throws {
+        guard isNotTimedOut(started: started, timeout: timeout) else {
+            throw DependencyError(code: .timeout)
+        }
+    }
+    
     private func isNotTimedOut(started: Date, timeout: TimeInterval?) -> Bool {
         Date().timeIntervalSince(started) < (timeout ?? defaultTimeout)
     }
