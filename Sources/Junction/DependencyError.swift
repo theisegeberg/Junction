@@ -6,7 +6,7 @@ import Foundation
 /// In the case where multiple situations have arisen simultaneously, for instance a task may be timed out while it has also failed a refresh the order of checks is as follows: critical error, failed refresh and then timeout. The reason for this is that a critical error has the intention of informing other tasks that this has occured.
 ///
 public struct DependencyError: LocalizedError, Equatable {
-    public enum ErrorCode: Equatable {
+    public enum ErrorCode: Equatable, Sendable {
         public static func == (lhs: DependencyError.ErrorCode, rhs: DependencyError.ErrorCode) -> Bool {
             switch (lhs, rhs) {
             case (.timeout, .timeout),

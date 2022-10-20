@@ -15,10 +15,27 @@ final class BasicTests: XCTestCase {
         XCTAssertEqual(successResult, randomNumber)
     }
 
+    actor OutsideValue:Sendable {
+        var value:Int
+        
+        init(value: Int) {
+            self.value = value
+        }
+        
+        func increment() {
+            value = value + 1
+        }
+        
+        func getValue() -> Int {
+            return value
+        }
+    }
+    
     func testIncrementingUpdateSuccess() async throws {
         let runner = Dependency<Int>()
-
-        var temporarilyRefreshedDependency = 0
+        
+        let temporarilyRefreshedDependency = OutsideValue(value: 0)
+        
         let expectedNumber = 3
         let incrementingResult = try await runner.run(task: { dependency in
             XCTAssertLessThanOrEqual(dependency, expectedNumber)
@@ -28,9 +45,10 @@ final class BasicTests: XCTestCase {
                 return .dependencyRequiresRefresh
             }
         }, refreshDependency: { _ in
-            temporarilyRefreshedDependency = temporarilyRefreshedDependency + 1
-            XCTAssertLessThanOrEqual(temporarilyRefreshedDependency, expectedNumber)
-            return .refreshedDependency(temporarilyRefreshedDependency)
+            await temporarilyRefreshedDependency.increment()
+            let value = await temporarilyRefreshedDependency.value
+            XCTAssertLessThanOrEqual(value, expectedNumber)
+            return .refreshedDependency(await temporarilyRefreshedDependency.value)
         })
 
         XCTAssertEqual(incrementingResult, expectedNumber)

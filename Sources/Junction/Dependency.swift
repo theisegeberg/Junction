@@ -4,7 +4,7 @@ import Foundation
 /// An `actor` that handles both providing and creating a dependency. It can handle many asyncronous tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh will be attemtped while all the tasks are put in a holding pattern. Once the dependency has been refreshed all the tasks will be retried.
 ///
 /// - Warning: This code is complex. That's the nature of both recursive and asynchronous code, and this is both. I've gone to great lengths to make the compiler prove it's functionality. Hence all the generics.
-public actor Dependency<DependencyType> {
+public actor Dependency<DependencyType:Sendable> {
     private enum State: Equatable {
         static func == (lhs: Dependency<DependencyType>.State, rhs: Dependency<DependencyType>.State) -> Bool {
             switch (lhs, rhs) {
@@ -69,19 +69,27 @@ public actor Dependency<DependencyType> {
     ///   - refreshDependency: The job to be performed if the dependency is missing or needs to be refreshed. Must return a `RefreshResult` which can be a succesful refresh or an indication that the refresh itself failed. If it fails the entire task `.run` will throw a `DependencyError` with `.code` == `ErrorCode.failedRefresh`.
     ///   - timeout: The maximum time the task must wait before it times out. The timeout check is not guaranteed for tasks, it's not safe to rely on its specific time. Proper usage is as a fail-safe against infinite `try -> refresh -> try` loops.
     /// - Returns: The result of the task in the case where it succeeds.
-    public func run<Success>(
-        task: (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
-        refreshDependency: (DependencyType?) async throws -> (RefreshResult<DependencyType>),
+    public func run<Success:Sendable>(
+        task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
+        refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         timeout: TimeInterval? = nil
     ) async throws -> Success {
         try await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
     }
     
-    public func mapRun<InnerDependency,Success>(
+    /// This will run a depedency inside of this one.
+    /// - Parameters:
+    ///   - dependency: The inner dependency to run.
+    ///   - task: The task that must be run, which requires a dependency. This dependency relies on another dependency.
+    ///   - innerRefresh: The task that will work to refresh the innermost dependency.
+    ///   - outerRefresh: The task that will work to refresh the outermost dependency.
+    ///   - timeout: The timeout for the task.
+    /// - Returns: The `Success` result of the task.
+    public func mapRun<InnerDependency:Sendable,Success:Sendable>(
         dependency:Dependency<InnerDependency>,
-        task:(DependencyType, InnerDependency) async throws -> TaskResult<Success>,
-        innerRefresh:(DependencyType, InnerDependency?) async throws -> (RefreshResult<InnerDependency>),
-        outerRefresh:(Dependency<InnerDependency>, DependencyType?) async throws -> (RefreshResult<DependencyType>),
+        task:@Sendable (DependencyType, InnerDependency) async throws -> TaskResult<Success>,
+        innerRefresh:@Sendable (DependencyType, InnerDependency?) async throws -> (RefreshResult<InnerDependency>),
+        outerRefresh:@Sendable (Dependency<InnerDependency>, DependencyType?) async throws -> (RefreshResult<DependencyType>),
         timeout:TimeInterval? = nil
     ) async throws -> Success
     {
@@ -89,17 +97,18 @@ public actor Dependency<DependencyType> {
             task: {
                 outerDependency -> TaskResult<Success> in
                 do {
-                    let result = try await dependency
-                        .run(
-                            task: { innerDependency -> TaskResult<Success> in
-                                return try await task(outerDependency, innerDependency)
-                            },
-                            refreshDependency: { innerDependency in
-                                return try await innerRefresh(outerDependency, innerDependency)
-                            },
-                            timeout: timeout
-                        )
-                    return .success(result)
+                    return try await .success(
+                        dependency
+                            .run(
+                                task: { innerDependency -> TaskResult<Success> in
+                                    try await task(outerDependency, innerDependency)
+                                },
+                                refreshDependency: { innerDependency in
+                                    try await innerRefresh(outerDependency, innerDependency)
+                                },
+                                timeout: timeout
+                            )
+                    )
                 } catch let error as DependencyError where error.code == .failedRefresh {
                     return .dependencyRequiresRefresh
                 }
@@ -112,10 +121,11 @@ public actor Dependency<DependencyType> {
         )
     }
     
-
+    
+    /// The private implementation of run. The main difference is that this one doesn't set the started time. This is the entrance method of all runs, and contains the pseudo state machine that handles the running.
     private func run<Success>(
-        task: (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
-        refreshDependency: (DependencyType?) async throws -> (RefreshResult<DependencyType>),
+        task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
+        refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         started: Date,
         timeout: TimeInterval?
     ) async throws -> Success {

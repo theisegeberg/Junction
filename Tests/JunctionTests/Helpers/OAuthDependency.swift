@@ -1,7 +1,10 @@
 
 import Foundation
+import Junction
 
 /// A manager for two `Dependency` objects that handles OAuth like scenarios.
+///
+/// This is purely intended as an example implementation. It does not cover the entirety of the OAuth flow.
 public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     public struct RefreshToken {
         let token: RefreshTokenType
