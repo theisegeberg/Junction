@@ -10,8 +10,8 @@ public struct DependencyError: LocalizedError, Equatable {
         public static func == (lhs: DependencyError.ErrorCode, rhs: DependencyError.ErrorCode) -> Bool {
             switch (lhs, rhs) {
             case (.timeout, .timeout),
-                    (.failedRefresh, .failedRefresh),
-                    (.critical, .critical):
+                 (.failedRefresh, .failedRefresh),
+                 (.critical, .critical):
                 return true
             default:
                 return false
@@ -27,7 +27,7 @@ public struct DependencyError: LocalizedError, Equatable {
     }
 
     public let code: ErrorCode
-    
+
     public init(code: ErrorCode) {
         self.code = code
     }

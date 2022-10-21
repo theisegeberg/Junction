@@ -4,41 +4,18 @@ import Foundation
 /// An `actor` that handles both providing and creating a dependency. It can handle many asyncronous tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh will be attemtped while all the tasks are put in a holding pattern. Once the dependency has been refreshed all the tasks will be retried.
 ///
 /// - Warning: This code is complex. That's the nature of both recursive and asynchronous code, and this is both. I've gone to great lengths to make the compiler prove it's functionality. Hence all the generics.
-public actor Dependency<DependencyType:Sendable> {
-    private enum State: Equatable {
-        static func == (lhs: Dependency<DependencyType>.State, rhs: Dependency<DependencyType>.State) -> Bool {
-            switch (lhs, rhs) {
-            case (.ready, .ready), (.refreshing, .refreshing), (.failedRefresh, .failedRefresh), (.criticalError, .criticalError):
-                return true
-            default:
-                return false
-            }
-        }
-
+public actor Dependency<DependencyType: Sendable> {
+    private enum State {
         case ready
         case refreshing
         case failedRefresh
         case criticalError(Error?)
-
-        var errorInCritical: Error? {
-            if case let .criticalError(error) = self {
-                return error
-            } else {
-                return nil
-            }
-        }
     }
 
     private var state: State = .ready
     private var dependency: VersionStore<DependencyType>
     private var threadSleep: UInt64
     private var defaultTimeout: TimeInterval
-
-    private var isReadyToRunTask: Bool {
-        let isDependencyOk = (dependency.getIsValid() && dependency.getLatest() != nil)
-        let isStateOk = state == .ready
-        return isDependencyOk && isStateOk
-    }
 
     /// Creates a new `Dependency`.
     ///
@@ -52,7 +29,7 @@ public actor Dependency<DependencyType:Sendable> {
         threadSleep: UInt64 = 100_000_000,
         defaultTimeout: TimeInterval = 10
     ) {
-        self.dependency = VersionStore(dependency: nil)
+        dependency = VersionStore(dependency: nil)
         self.threadSleep = threadSleep
         self.defaultTimeout = defaultTimeout
     }
@@ -69,14 +46,14 @@ public actor Dependency<DependencyType:Sendable> {
     ///   - refreshDependency: The job to be performed if the dependency is missing or needs to be refreshed. Must return a `RefreshResult` which can be a succesful refresh or an indication that the refresh itself failed. If it fails the entire task `.run` will throw a `DependencyError` with `.code` == `ErrorCode.failedRefresh`.
     ///   - timeout: The maximum time the task must wait before it times out. The timeout check is not guaranteed for tasks, it's not safe to rely on its specific time. Proper usage is as a fail-safe against infinite `try -> refresh -> try` loops.
     /// - Returns: The result of the task in the case where it succeeds.
-    public func run<Success:Sendable>(
+    public func run<Success: Sendable>(
         task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
         refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         timeout: TimeInterval? = nil
     ) async throws -> Success {
         try await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
     }
-    
+
     /// This will run a depedency inside of this one.
     /// - Parameters:
     ///   - dependency: The inner dependency to run.
@@ -85,15 +62,14 @@ public actor Dependency<DependencyType:Sendable> {
     ///   - outerRefresh: The task that will work to refresh the outermost dependency.
     ///   - timeout: The timeout for the task.
     /// - Returns: The `Success` result of the task.
-    public func mapRun<InnerDependency:Sendable,Success:Sendable>(
-        dependency:Dependency<InnerDependency>,
-        task:@Sendable (DependencyType, InnerDependency) async throws -> TaskResult<Success>,
-        innerRefresh:@Sendable (DependencyType, InnerDependency?) async throws -> (RefreshResult<InnerDependency>),
-        outerRefresh:@Sendable (Dependency<InnerDependency>, DependencyType?) async throws -> (RefreshResult<DependencyType>),
-        timeout:TimeInterval? = nil
-    ) async throws -> Success
-    {
-        try await self.run (
+    public func mapRun<InnerDependency: Sendable, Success: Sendable>(
+        dependency: Dependency<InnerDependency>,
+        task: @Sendable (DependencyType, InnerDependency) async throws -> TaskResult<Success>,
+        innerRefresh: @Sendable (DependencyType, InnerDependency?) async throws -> (RefreshResult<InnerDependency>),
+        outerRefresh: @Sendable (Dependency<InnerDependency>, DependencyType?) async throws -> (RefreshResult<DependencyType>),
+        timeout: TimeInterval? = nil
+    ) async throws -> Success {
+        try await run(
             task: {
                 outerDependency -> TaskResult<Success> in
                 do {
@@ -115,13 +91,12 @@ public actor Dependency<DependencyType:Sendable> {
             },
             refreshDependency: {
                 outerDependency in
-                try await outerRefresh(dependency,outerDependency)
+                try await outerRefresh(dependency, outerDependency)
             },
             timeout: timeout
         )
     }
-    
-    
+
     /// The private implementation of run. The main difference is that this one doesn't set the started time. This is the entrance method of all runs, and contains the pseudo state machine that handles the running.
     private func run<Success>(
         task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
@@ -129,17 +104,19 @@ public actor Dependency<DependencyType:Sendable> {
         started: Date,
         timeout: TimeInterval?
     ) async throws -> Success {
-        while state == .refreshing {
-            try await Task.sleep(nanoseconds: threadSleep)
-            await Task.yield()
-            try validateTaskStateAndTimeout(started: started, timeout: timeout)
-        }
+        try await stall()
+        try validateTaskState()
+        try validateTaskTimeout(started: started, timeout: timeout)
 
-        guard isReadyToRunTask else {
+        guard let actualDependency = dependency.getLatest(),
+              case .ready = state,
+              dependency.getIsValid()
+        else {
             state = .refreshing
             switch try await refreshDependency(dependency.getLatest()) {
             case let .refreshedDependency(refreshed):
-                try validateTaskStateAndTimeout(started: started, timeout: timeout)
+                try validateTaskState()
+                try validateTaskTimeout(started: started, timeout: timeout)
                 dependency.newVersion(refreshed)
                 state = .ready
                 return try await run(
@@ -154,19 +131,10 @@ public actor Dependency<DependencyType:Sendable> {
             }
         }
 
-        guard let actualDependency = dependency.getLatest() else {
-            dependency.invalidate()
-            return try await run(
-                task: task,
-                refreshDependency: refreshDependency,
-                started: started,
-                timeout: timeout
-            )
-        }
-
         let versionAtRun = dependency.getVersion()
         let taskResult = try await task(actualDependency)
-        try validateTaskStateAndTimeout(started: started, timeout: timeout)
+        try validateTaskState()
+        try validateTaskTimeout(started: started, timeout: timeout)
         switch taskResult {
         case let .success(success):
             return success
@@ -197,55 +165,39 @@ public actor Dependency<DependencyType:Sendable> {
         state = .ready
     }
 
-    /// Manually refreshes the dependency from without. Wil
+    /// Manually refreshes the dependency from without.
     /// - Parameter freshDependency: The new dependency.
     public func refresh(dependency freshDependency: DependencyType) async throws {
         try await stall()
         dependency.newVersion(freshDependency)
         state = .ready
     }
-    
+
     private func stall() async throws {
-        while state == .refreshing {
+        while case .refreshing = state {
             try await Task.sleep(nanoseconds: threadSleep)
             await Task.yield()
         }
     }
-    
-    private func validateTaskStateAndTimeout(started:Date, timeout:TimeInterval?) throws {
-        switch state {
-            case .failedRefresh:
-                throw DependencyError(code: .failedRefresh)
-            case .criticalError(let error):
-                throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
-            case .refreshing, .ready:
-                break
-        }
+
+    private func validateTaskTimeout(started: Date, timeout: TimeInterval?) throws {
         guard isNotTimedOut(started: started, timeout: timeout) else {
             throw DependencyError(code: .timeout)
-        }
-    }
-    
-    private func throwRefreshFailedError() throws {
-        guard state != .failedRefresh else {
-            throw DependencyError(code: .failedRefresh)
-        }
-    }
-    
-    private func throwCriticalError() throws {
-        if case let .criticalError(error) = state {
-            throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
         }
     }
 
-    public func throwTimeoutError(started: Date, timeout: TimeInterval?) throws {
-        guard isNotTimedOut(started: started, timeout: timeout) else {
-            throw DependencyError(code: .timeout)
+    private func validateTaskState() throws {
+        switch state {
+        case .failedRefresh:
+            throw DependencyError(code: .failedRefresh)
+        case let .criticalError(error):
+            throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
+        case .refreshing, .ready:
+            break
         }
     }
-    
+
     private func isNotTimedOut(started: Date, timeout: TimeInterval?) -> Bool {
         Date().timeIntervalSince(started) < (timeout ?? defaultTimeout)
     }
-
 }

@@ -14,7 +14,7 @@ final class JunctionTests: XCTestCase {
             Task {
                 do {
                     try await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                    let _: String = try! await oauthRunner.run(
+                    let _: String = try await oauthRunner.run(
                         task: {
                             accessDependency in
                             switch await backend.getResource(clientAccessToken: accessDependency.token) {
@@ -67,7 +67,7 @@ final class JunctionTests: XCTestCase {
             Task {
                 do {
                     try await Task.sleep(nanoseconds: UInt64.random(in: 0 ..< maxTime))
-                    let _: String = try! await oauthRunner.run(
+                    let _: String = try await oauthRunner.run(
                         task: {
                             accessDependency in
                             switch await backend.getResource(clientAccessToken: accessDependency.token) {
@@ -83,11 +83,11 @@ final class JunctionTests: XCTestCase {
                             refreshDependency, _ in
                             switch await backend.refresh(clientRefreshToken: refreshDependency.token) {
                             case .unauthorised:
-                                return RefreshResult.failedRefresh
+                                return .failedRefresh
                             case .ok:
                                 fatalError()
                             case let .updatedToken(uuid):
-                                return RefreshResult.refreshedDependency(.init(token: uuid))
+                                return .refreshedDependency(.init(token: uuid))
                             }
                         },
                         refreshRefreshToken: {
