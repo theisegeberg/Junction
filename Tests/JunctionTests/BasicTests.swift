@@ -14,6 +14,31 @@ final class BasicTests: XCTestCase {
 
         XCTAssertEqual(successResult, randomNumber)
     }
+    
+    func testCancellation() async throws {
+        let runner = Dependency<Int>()
+        let randomNumber = Int.random(in: 0 ... Int.max)
+        let task = Task { () throws -> Int in
+            let successResult = try await runner.run { dependency in
+                try await Task.sleep(nanoseconds: 1_000_000)
+                return .success(dependency)
+            } refreshDependency: { _ in
+                try await Task.sleep(nanoseconds: 1_000_000)
+                return .refreshedDependency(randomNumber)
+            }
+            return successResult
+        }
+        task.cancel()
+        let expectation = XCTestExpectation()
+
+        do {
+            let _ = try await task.value
+            XCTFail("Should not get to here")
+        } catch let dependencyError as DependencyError where dependencyError.code == .cancelled {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
 
     actor OutsideValue: Sendable {
         var value: Int
@@ -97,26 +122,26 @@ final class BasicTests: XCTestCase {
         }
         wait(for: expectations, timeout: 1)
     }
-    
+
     func testRefresh() async throws {
         let runner = Dependency<Int>()
-        
+
         let tasks = Int.random(in: 1 ..< 20)
         var expectations = [XCTestExpectation]()
-        
+
         for _ in 0 ..< tasks {
             let expectation = XCTestExpectation()
             expectations.append(expectation)
             Task {
                 do {
                     let result = try await runner.run(task: { intDependency -> TaskResult<Int> in
-                        try await Task.sleep(nanoseconds: 50_000 + UInt64.random(in: 100_000 ..< 200_000))
+                        try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
                         if intDependency < 10 {
                             return .dependencyRequiresRefresh
                         }
                         return .success(intDependency)
                     }, refreshDependency: { lastDependency in
-                        try await Task.sleep(nanoseconds: 50_000 + UInt64.random(in: 400_000 ..< 500_000))
+                        try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
                         return .refreshedDependency((lastDependency ?? 0) + 1)
                     })
                     XCTAssertEqual(result, 10)
@@ -124,12 +149,10 @@ final class BasicTests: XCTestCase {
                 } catch {
                     fatalError()
                 }
-                
             }
         }
         wait(for: expectations, timeout: 1)
     }
-    
 
     func testTimeoutFailure() async throws {
         let runner = Dependency<Int>()

@@ -195,6 +195,11 @@ public actor Dependency<DependencyType: Sendable> {
         case .refreshing, .ready:
             break
         }
+        do {
+            try Task.checkCancellation()
+        } catch {
+            throw DependencyError(code: .cancelled)
+        }
     }
 
     private func isNotTimedOut(started: Date, timeout: TimeInterval?) -> Bool {
