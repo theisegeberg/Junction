@@ -16,30 +16,30 @@ public actor Dependency<DependencyType: Sendable> {
 
     private var state: State = .ready
     private var refreshCount: Int = 0
-    private var dependency: VersionStore<DependencyType>
+    private var store: VersionStore<DependencyType>
     private var configuration:DependencyConfiguration
 
     /// Creates a new `Dependency`.
     ///
     /// After creating it you can call `.run` to execute code that depends on it.
     ///
-    /// - Parameters:
-    ///   - dependency: A pre-existing dependency.
-    ///   - threadSleep: When a `Dependency` is refreshing, then other tasks will be waiting. While waiting then it will retry periodically with a delay. `threadSleep` is the delay in nano seconds.
-    ///   - defaultTimeout: A task that is stuck in a refresh -> retry loop, or is just experiencing slow refreshes will finally timeout. This is not the same as a timeout occured inside the actual task (when performing a task on `URLSession`  for example). This is an extra check placed in the `Dependency` for cases where some given task is too slow.
+    /// - Parameter configuration: Configuration of the dependency, defaults to a `.default` version. See `DependencyConfiguration` for more details.
     public init(
         configuration: DependencyConfiguration = .default
     ) {
-        dependency = VersionStore(dependency: nil)
+        store = VersionStore(dependency: nil)
         self.configuration = configuration
     }
 
     /// Tries to execute a tas kthat requires a `Dependency`. If the `Dependency` is invalid or missing it
     /// attempts to refresh the dependency with the given closure.
     ///
+    /// If you need to inject an original dependency value, then you can check in the refreshDependency closure whether or
+    /// not the dependency is nil. If it's nil then there is no dependency present, and you can fetch and return it here. If it's not
+    /// nil then the value is the dependency that was attempted.
+    ///
     /// - Throws: A `DependencyError` which can be a timeout or a failure to refresh. If But also rethrows
-    /// any error that the `.run` task may throw. Since there are Thread.sleep in the code you may also get
-    /// a `CancellationError`.
+    /// any error that the `.run` task may throw.
     ///
     /// - Parameters:
     ///   - task: The job to be performed. Must return a `TaskResult` which can either mean that it succeded or requires an update.
@@ -103,9 +103,9 @@ public actor Dependency<DependencyType: Sendable> {
         try validateTaskState()
         try validateTaskTimeout(started: started)
 
-        guard let actualDependency = dependency.getLatest(),
+        guard let actualDependency = store.getLatest(),
               case .ready = state,
-              dependency.getIsValid()
+              store.getIsValid()
         else {
             state = .refreshing
             refreshCount = refreshCount + 1
@@ -113,11 +113,11 @@ public actor Dependency<DependencyType: Sendable> {
                 state = .maximumRefreshesReached
             }
             try validateTaskState()
-            switch try await refreshDependency(dependency.getLatest()) {
+            switch try await refreshDependency(store.getLatest()) {
             case let .refreshedDependency(refreshed):
                 try validateTaskState()
                 try validateTaskTimeout(started: started)
-                dependency.newVersion(refreshed)
+                store.newVersion(refreshed)
                 state = .ready
                 return try await run(
                     task: task,
@@ -130,7 +130,7 @@ public actor Dependency<DependencyType: Sendable> {
             }
         }
 
-        let versionAtRun = dependency.getVersion()
+        let versionAtRun = store.getVersion()
         let taskResult = try await task(actualDependency)
         try validateTaskState()
         try validateTaskTimeout(started: started)
@@ -143,8 +143,8 @@ public actor Dependency<DependencyType: Sendable> {
             /// If  the is the same that means that no other process changed the dependency
             /// while we were performing our task. If the lock changed then another process
             /// changed it, and we should just move on.
-            if versionAtRun == dependency.getVersion() {
-                dependency.invalidate()
+            if versionAtRun == store.getVersion() {
+                store.invalidate()
             }
             return try await run(
                 task: task,
@@ -160,7 +160,7 @@ public actor Dependency<DependencyType: Sendable> {
     /// Resets the dependency. If a refresh is running, the reset will occur after the refresh.
     public func reset() async throws {
         try await stall()
-        dependency.reset()
+        store.reset()
         state = .ready
         refreshCount = 0
     }
@@ -169,7 +169,7 @@ public actor Dependency<DependencyType: Sendable> {
     /// - Parameter freshDependency: The new dependency.
     public func refresh(dependency freshDependency: DependencyType) async throws {
         try await stall()
-        dependency.newVersion(freshDependency)
+        store.newVersion(freshDependency)
         state = .ready
     }
 
