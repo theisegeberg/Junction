@@ -5,17 +5,19 @@ import Foundation
 ///
 /// - Warning: This code is complex. That's the nature of both recursive and asynchronous code, and this is both. I've gone to great lengths to make the compiler prove it's functionality. Hence all the generics.
 public actor Dependency<DependencyType: Sendable> {
+    
     private enum State {
         case ready
         case refreshing
         case failedRefresh
+        case maximumRefreshesReached
         case criticalError(Error?)
     }
 
     private var state: State = .ready
+    private var refreshCount: Int = 0
     private var dependency: VersionStore<DependencyType>
-    private var threadSleep: UInt64
-    private var defaultTimeout: TimeInterval
+    private var configuration:DependencyConfiguration
 
     /// Creates a new `Dependency`.
     ///
@@ -26,12 +28,10 @@ public actor Dependency<DependencyType: Sendable> {
     ///   - threadSleep: When a `Dependency` is refreshing, then other tasks will be waiting. While waiting then it will retry periodically with a delay. `threadSleep` is the delay in nano seconds.
     ///   - defaultTimeout: A task that is stuck in a refresh -> retry loop, or is just experiencing slow refreshes will finally timeout. This is not the same as a timeout occured inside the actual task (when performing a task on `URLSession`  for example). This is an extra check placed in the `Dependency` for cases where some given task is too slow.
     public init(
-        threadSleep: UInt64 = 100_000_000,
-        defaultTimeout: TimeInterval = 10
+        configuration: DependencyConfiguration = .default
     ) {
         dependency = VersionStore(dependency: nil)
-        self.threadSleep = threadSleep
-        self.defaultTimeout = defaultTimeout
+        self.configuration = configuration
     }
 
     /// Tries to execute a tas kthat requires a `Dependency`. If the `Dependency` is invalid or missing it
@@ -48,10 +48,9 @@ public actor Dependency<DependencyType: Sendable> {
     /// - Returns: The result of the task in the case where it succeeds.
     public func run<Success: Sendable>(
         task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
-        refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>),
-        timeout: TimeInterval? = nil
+        refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>)
     ) async throws -> Success {
-        try await run(task: task, refreshDependency: refreshDependency, started: .init(), timeout: timeout)
+        try await run(task: task, refreshDependency: refreshDependency, started: .init())
     }
 
     /// This will run a depedency inside of this one.
@@ -66,8 +65,7 @@ public actor Dependency<DependencyType: Sendable> {
         dependency: Dependency<InnerDependency>,
         task: @Sendable (DependencyType, InnerDependency) async throws -> TaskResult<Success>,
         innerRefresh: @Sendable (DependencyType, InnerDependency?) async throws -> (RefreshResult<InnerDependency>),
-        outerRefresh: @Sendable (Dependency<InnerDependency>, DependencyType?) async throws -> (RefreshResult<DependencyType>),
-        timeout: TimeInterval? = nil
+        outerRefresh: @Sendable (Dependency<InnerDependency>, DependencyType?) async throws -> (RefreshResult<DependencyType>)
     ) async throws -> Success {
         try await run(
             task: {
@@ -81,8 +79,7 @@ public actor Dependency<DependencyType: Sendable> {
                                 },
                                 refreshDependency: { innerDependency in
                                     try await innerRefresh(outerDependency, innerDependency)
-                                },
-                                timeout: timeout
+                                }
                             )
                     )
                 } catch let error as DependencyError where error.code == .failedRefresh {
@@ -92,8 +89,7 @@ public actor Dependency<DependencyType: Sendable> {
             refreshDependency: {
                 outerDependency in
                 try await outerRefresh(dependency, outerDependency)
-            },
-            timeout: timeout
+            }
         )
     }
 
@@ -101,29 +97,32 @@ public actor Dependency<DependencyType: Sendable> {
     private func run<Success>(
         task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
         refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>),
-        started: Date,
-        timeout: TimeInterval?
+        started: Date
     ) async throws -> Success {
         try await stall()
         try validateTaskState()
-        try validateTaskTimeout(started: started, timeout: timeout)
+        try validateTaskTimeout(started: started)
 
         guard let actualDependency = dependency.getLatest(),
               case .ready = state,
               dependency.getIsValid()
         else {
             state = .refreshing
+            refreshCount = refreshCount + 1
+            if refreshCount == configuration.maximumRefreshes {
+                state = .maximumRefreshesReached
+            }
+            try validateTaskState()
             switch try await refreshDependency(dependency.getLatest()) {
             case let .refreshedDependency(refreshed):
                 try validateTaskState()
-                try validateTaskTimeout(started: started, timeout: timeout)
+                try validateTaskTimeout(started: started)
                 dependency.newVersion(refreshed)
                 state = .ready
                 return try await run(
                     task: task,
                     refreshDependency: refreshDependency,
-                    started: started,
-                    timeout: timeout
+                    started: started
                 )
             case .failedRefresh:
                 state = .failedRefresh
@@ -134,9 +133,10 @@ public actor Dependency<DependencyType: Sendable> {
         let versionAtRun = dependency.getVersion()
         let taskResult = try await task(actualDependency)
         try validateTaskState()
-        try validateTaskTimeout(started: started, timeout: timeout)
+        try validateTaskTimeout(started: started)
         switch taskResult {
         case let .success(success):
+            refreshCount = 0 // On a succesful run we'll reset the refreshCount to zero.
             return success
         case .dependencyRequiresRefresh:
             /// Race condition check:
@@ -149,8 +149,7 @@ public actor Dependency<DependencyType: Sendable> {
             return try await run(
                 task: task,
                 refreshDependency: refreshDependency,
-                started: started,
-                timeout: timeout
+                started: started
             )
         case let .criticalError(underlyingError: error):
             state = .criticalError(error)
@@ -163,6 +162,7 @@ public actor Dependency<DependencyType: Sendable> {
         try await stall()
         dependency.reset()
         state = .ready
+        refreshCount = 0
     }
 
     /// Manually refreshes the dependency from without.
@@ -175,13 +175,13 @@ public actor Dependency<DependencyType: Sendable> {
 
     private func stall() async throws {
         while case .refreshing = state {
-            try await Task.sleep(nanoseconds: threadSleep)
+            try await Task.sleep(nanoseconds: configuration.threadSleepNanoSeconds)
             await Task.yield()
         }
     }
 
-    private func validateTaskTimeout(started: Date, timeout: TimeInterval?) throws {
-        guard isNotTimedOut(started: started, timeout: timeout) else {
+    private func validateTaskTimeout(started: Date) throws {
+        guard isNotTimedOut(started: started) else {
             throw DependencyError(code: .timeout)
         }
     }
@@ -192,6 +192,8 @@ public actor Dependency<DependencyType: Sendable> {
             throw DependencyError(code: .failedRefresh)
         case let .criticalError(error):
             throw DependencyError(code: .critical(wasThrownByThisTask: false, error: error))
+        case .maximumRefreshesReached:
+            throw DependencyError(code: .maximumRefreshesReached)
         case .refreshing, .ready:
             break
         }
@@ -202,7 +204,7 @@ public actor Dependency<DependencyType: Sendable> {
         }
     }
 
-    private func isNotTimedOut(started: Date, timeout: TimeInterval?) -> Bool {
-        Date().timeIntervalSince(started) < (timeout ?? defaultTimeout)
+    private func isNotTimedOut(started: Date) -> Bool {
+        Date().timeIntervalSince(started) < configuration.defaultTaskTimeout
     }
 }

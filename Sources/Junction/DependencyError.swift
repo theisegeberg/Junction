@@ -12,7 +12,8 @@ public struct DependencyError: LocalizedError, Equatable {
                 case (.timeout, .timeout),
                     (.failedRefresh, .failedRefresh),
                     (.critical, .critical),
-                    (.cancelled, .cancelled):
+                    (.cancelled, .cancelled),
+                    (.maximumRefreshesReached, .maximumRefreshesReached):
                     return true
                 default:
                     return false
@@ -27,6 +28,8 @@ public struct DependencyError: LocalizedError, Equatable {
         case critical(wasThrownByThisTask: Bool, error: Error?)
         /// Task was cancelled
         case cancelled
+        /// Maximum number of refreshes was reached.
+        case maximumRefreshesReached
     }
 
     public let code: ErrorCode

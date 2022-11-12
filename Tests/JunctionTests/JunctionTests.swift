@@ -8,7 +8,7 @@ final class JunctionTests: XCTestCase {
 
         let maxTime: UInt64 = 10_000_000_000
 
-        let oauthRunner = OAuthDependency<UUID, UUID>(threadSleep: 50_000_000, timeout: 10)
+        let oauthRunner = OAuthDependency<UUID, UUID>(refreshConfiguration: .default, accessConfiguration: .default)
 
         for _ in 0 ..< 200 {
             Task {
@@ -61,7 +61,7 @@ final class JunctionTests: XCTestCase {
 
         let maxTime: UInt64 = 10_000_000_000
 
-        let oauthRunner = OAuthDependency<UUID, UUID>(threadSleep: 50_000_000, timeout: 2.2)
+        let oauthRunner = OAuthDependency<UUID, UUID>(refreshConfiguration: .default, accessConfiguration: .default)
 
         for _ in 0 ..< 500 {
             Task {

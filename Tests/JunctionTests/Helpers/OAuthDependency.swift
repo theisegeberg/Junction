@@ -18,9 +18,9 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     private let refreshDependency: Dependency<RefreshToken>
     private let accessDependency: Dependency<AccessToken>
 
-    public init(threadSleep: UInt64, timeout: TimeInterval) {
-        refreshDependency = .init(threadSleep: threadSleep, defaultTimeout: timeout)
-        accessDependency = .init(threadSleep: threadSleep, defaultTimeout: timeout)
+    public init(refreshConfiguration: DependencyConfiguration, accessConfiguration: DependencyConfiguration) {
+        refreshDependency = .init(configuration: refreshConfiguration)
+        accessDependency = .init(configuration: accessConfiguration)
     }
 
     public func run<Success>(
