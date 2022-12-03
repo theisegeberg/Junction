@@ -19,6 +19,7 @@
 		C6DE0F3B29011586007144AF /* Dependency.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DE0F3629011586007144AF /* Dependency.swift */; };
 		C6DE0F3C29011586007144AF /* RefreshResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DE0F3729011586007144AF /* RefreshResult.swift */; };
 		C6DE0F3D29011586007144AF /* DependencyError.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DE0F3829011586007144AF /* DependencyError.swift */; };
+		C6E61138291FAC3500E3761C /* DependencyConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6E61137291FAC3500E3761C /* DependencyConfiguration.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +56,7 @@
 		C6DE0F3629011586007144AF /* Dependency.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Dependency.swift; sourceTree = "<group>"; };
 		C6DE0F3729011586007144AF /* RefreshResult.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RefreshResult.swift; sourceTree = "<group>"; };
 		C6DE0F3829011586007144AF /* DependencyError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DependencyError.swift; sourceTree = "<group>"; };
+		C6E61137291FAC3500E3761C /* DependencyConfiguration.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DependencyConfiguration.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,6 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				C6DE0F3429011586007144AF /* TaskResult.swift */,
+				C6E61137291FAC3500E3761C /* DependencyConfiguration.swift */,
 				C6DE0F3529011586007144AF /* VersionStore.swift */,
 				C6DE0F3629011586007144AF /* Dependency.swift */,
 				C6DE0F3729011586007144AF /* RefreshResult.swift */,
@@ -290,6 +293,7 @@
 				C6DE0F3D29011586007144AF /* DependencyError.swift in Sources */,
 				C6DE0F3929011586007144AF /* TaskResult.swift in Sources */,
 				C6DE0F0929011576007144AF /* ExampleApp.swift in Sources */,
+				C6E61138291FAC3500E3761C /* DependencyConfiguration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

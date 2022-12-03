@@ -3,7 +3,7 @@ import XCTest
 
 final class BasicTests: XCTestCase {
     func testSuccess() async throws {
-        let runner = Dependency<Int>()
+        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 20, maximumRefreshes: 1))
         let randomNumber = Int.random(in: 0 ... Int.max)
 
         let successResult = try await runner.run { dependency in
@@ -16,7 +16,7 @@ final class BasicTests: XCTestCase {
     }
     
     func testCancellation() async throws {
-        let runner = Dependency<Int>()
+        let runner = Dependency<Int>(configuration: .recommended)
         let randomNumber = Int.random(in: 0 ... Int.max)
         let task = Task { () throws -> Int in
             let successResult = try await runner.run { dependency in
@@ -56,7 +56,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testIncrementingUpdateSuccess() async throws {
-        let runner = Dependency<Int>()
+        let runner = Dependency<Int>(configuration: .default)
 
         let temporarilyRefreshedDependency = OutsideValue(value: 0)
 
@@ -79,7 +79,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testUpdateWithRefreshFailure1() async throws {
-        let runner = Dependency<Int>()
+        let runner = Dependency<Int>(configuration: .default)
 
         let expectation = XCTestExpectation()
         do {
@@ -97,7 +97,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testUpdateWithRefreshFailure2() async throws {
-        let runner = Dependency<Int>()
+        let runner = Dependency<Int>(configuration: .default)
 
         let tasks = Int.random(in: 0 ..< 100)
         var expectations = [XCTestExpectation]()
@@ -159,7 +159,7 @@ final class BasicTests: XCTestCase {
         try await runner.reset()
         let _ = try await runner.run(task: { intDependency -> TaskResult<Int> in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
-            if intDependency < 9 {
+            if intDependency < 10 {
                 return .dependencyRequiresRefresh
             }
             return .success(intDependency)
@@ -173,7 +173,7 @@ final class BasicTests: XCTestCase {
         do {
             let _ = try await runner.run(task: { intDependency -> TaskResult<Int> in
                 try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
-                if intDependency < 10 {
+                if intDependency < 11 {
                     return .dependencyRequiresRefresh
                 }
                 return .success(intDependency)
@@ -185,11 +185,11 @@ final class BasicTests: XCTestCase {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 4)
-        
+
         try await runner.reset()
         let _ = try await runner.run(task: { intDependency -> TaskResult<Int> in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
-            if intDependency < 9 {
+            if intDependency < 10 {
                 return .dependencyRequiresRefresh
             }
             return .success(intDependency)
@@ -197,7 +197,7 @@ final class BasicTests: XCTestCase {
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
             return .refreshedDependency((lastDependency ?? 0) + 1)
         })
-        
+
         let _ = try await runner.run(task: { intDependency -> TaskResult<Int> in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
             if intDependency < 9 {
@@ -249,7 +249,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testCriticalError() async throws {
-        let runner = Dependency<Int>()
+        let runner = Dependency<Int>(configuration: .default)
 
         struct TestError: Error {
             let value: String

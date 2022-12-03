@@ -18,9 +18,18 @@ public struct DependencyConfiguration {
         self.maximumRefreshes = maximumRefreshes
     }
     
+    /// This is the default setting running at a long thread sleep, an infinite task timeout.
     public static let `default`:Self = .init(
         threadSleepNanoSeconds: 100_000_000,
         defaultTaskTimeout: 10,
-        maximumRefreshes: 4
+        maximumRefreshes: 10
+    )
+    
+    /// This will sleep indefinitely and rely on the timeout of the underlying code. If a refresh fails it'll fail
+    /// immediately. This is useful for such things as HTTP requests.
+    public static let recommended:Self = .init(
+        threadSleepNanoSeconds: 250_000_000,
+        defaultTaskTimeout: .infinity,
+        maximumRefreshes: 1
     )
 }

@@ -1,9 +1,10 @@
 
 import Foundation
 
-/// An `actor` that handles both providing and creating a dependency. It can handle many asyncronous tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh will be attemtped while all the tasks are put in a holding pattern. Once the dependency has been refreshed all the tasks will be retried.
-///
-/// - Warning: This code is complex. That's the nature of both recursive and asynchronous code, and this is both. I've gone to great lengths to make the compiler prove it's functionality. Hence all the generics.
+/// An `actor` that handles both providing and creating a dependency. It can handle many asynchronous
+/// tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh
+/// will be attempted while all the tasks are put in a holding pattern. Once the dependency has been
+/// refreshed all the tasks will be retried.
 public actor Dependency<DependencyType: Sendable> {
     
     private enum State {
@@ -23,28 +24,35 @@ public actor Dependency<DependencyType: Sendable> {
     ///
     /// After creating it you can call `.run` to execute code that depends on it.
     ///
-    /// - Parameter configuration: Configuration of the dependency, defaults to a `.default` version. See `DependencyConfiguration` for more details.
+    /// - Parameter configuration: Configuration of the dependency, defaults to a `.default`
+    /// version. See `DependencyConfiguration` for more details.
     public init(
-        configuration: DependencyConfiguration = .default
+        configuration: DependencyConfiguration
     ) {
         store = VersionStore(dependency: nil)
         self.configuration = configuration
     }
 
-    /// Tries to execute a tas kthat requires a `Dependency`. If the `Dependency` is invalid or missing it
+    /// Tries to execute a task that requires a `Dependency`. If the `Dependency` is invalid or missing it
     /// attempts to refresh the dependency with the given closure.
     ///
-    /// If you need to inject an original dependency value, then you can check in the refreshDependency closure whether or
-    /// not the dependency is nil. If it's nil then there is no dependency present, and you can fetch and return it here. If it's not
-    /// nil then the value is the dependency that was attempted.
+    /// If you need to inject an original dependency value, then you can check in the refreshDependency
+    /// closure whether or not the dependency is nil. If it's nil then there is no dependency present, and you
+    /// can fetch and return it here. If it's not nil then the value is the dependency that was attempted.
     ///
-    /// - Throws: A `DependencyError` which can be a timeout or a failure to refresh. If But also rethrows
-    /// any error that the `.run` task may throw.
+    /// - Throws: A `DependencyError` which can be a timeout or a failure to refresh. If But also
+    /// rethrows any error that the `.run` task may throw.
     ///
     /// - Parameters:
-    ///   - task: The job to be performed. Must return a `TaskResult` which can either mean that it succeded or requires an update.
-    ///   - refreshDependency: The job to be performed if the dependency is missing or needs to be refreshed. Must return a `RefreshResult` which can be a succesful refresh or an indication that the refresh itself failed. If it fails the entire task `.run` will throw a `DependencyError` with `.code` == `ErrorCode.failedRefresh`.
-    ///   - timeout: The maximum time the task must wait before it times out. The timeout check is not guaranteed for tasks, it's not safe to rely on its specific time. Proper usage is as a fail-safe against infinite `try -> refresh -> try` loops.
+    ///   - task: The job to be performed. Must return a `TaskResult` which can either mean that it
+    ///   succeeded or requires an update.
+    ///   - refreshDependency: The job to be performed if the dependency is missing or needs to
+    ///   be refreshed. Must return a `RefreshResult` which can be a succesful refresh or an indication
+    ///   that the refresh itself failed. If it fails the entire task `.run` will throw a `DependencyError`
+    ///   with `.code` == `ErrorCode.failedRefresh`.
+    ///   - timeout: The maximum time the task must wait before it times out. The timeout check is
+    ///   not guaranteed for tasks, it's not safe to rely on its specific time. Proper usage is as a fail-safe
+    ///   against infinite `try -> refresh -> try` loops.
     /// - Returns: The result of the task in the case where it succeeds.
     public func run<Success: Sendable>(
         task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
@@ -56,7 +64,8 @@ public actor Dependency<DependencyType: Sendable> {
     /// This will run a depedency inside of this one.
     /// - Parameters:
     ///   - dependency: The inner dependency to run.
-    ///   - task: The task that must be run, which requires a dependency. This dependency relies on another dependency.
+    ///   - task: The task that must be run, which requires a dependency. This dependency relies on
+    ///   another dependency.
     ///   - innerRefresh: The task that will work to refresh the innermost dependency.
     ///   - outerRefresh: The task that will work to refresh the outermost dependency.
     ///   - timeout: The timeout for the task.
@@ -93,15 +102,18 @@ public actor Dependency<DependencyType: Sendable> {
         )
     }
 
-    /// The private implementation of run. The main difference is that this one doesn't set the started time. This is the entrance method of all runs, and contains the pseudo state machine that handles the running.
+    /// The private implementation of run. The main difference is that this one doesn't set the started time.
+    /// This is the entrance method of all runs, and contains the pseudo state machine that handles the
+    /// running.
     private func run<Success>(
         task: @Sendable (_ dependency: DependencyType) async throws -> (TaskResult<Success>),
         refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         started: Date
     ) async throws -> Success {
-        try await stall()
+        try await stall {
+            try validateTaskTimeout(started: started)
+        }
         try validateTaskState()
-        try validateTaskTimeout(started: started)
 
         guard let actualDependency = store.getLatest(),
               case .ready = state,
@@ -109,14 +121,12 @@ public actor Dependency<DependencyType: Sendable> {
         else {
             state = .refreshing
             refreshCount = refreshCount + 1
-            if refreshCount == configuration.maximumRefreshes {
+            if refreshCount > configuration.maximumRefreshes {
                 state = .maximumRefreshesReached
             }
             try validateTaskState()
             switch try await refreshDependency(store.getLatest()) {
             case let .refreshedDependency(refreshed):
-                try validateTaskState()
-                try validateTaskTimeout(started: started)
                 store.newVersion(refreshed)
                 state = .ready
                 return try await run(
@@ -131,9 +141,9 @@ public actor Dependency<DependencyType: Sendable> {
         }
 
         let versionAtRun = store.getVersion()
+        try validateTaskTimeout(started: started)
         let taskResult = try await task(actualDependency)
         try validateTaskState()
-        try validateTaskTimeout(started: started)
         switch taskResult {
         case let .success(success):
             refreshCount = 0 // On a succesful run we'll reset the refreshCount to zero.
@@ -153,13 +163,17 @@ public actor Dependency<DependencyType: Sendable> {
             )
         case let .criticalError(underlyingError: error):
             state = .criticalError(error)
-            throw DependencyError(code: .critical(wasThrownByThisTask: true, error: error))
+            throw DependencyError(
+                code: .critical(
+                    wasThrownByThisTask: true,
+                    error: error)
+            )
         }
     }
 
     /// Resets the dependency. If a refresh is running, the reset will occur after the refresh.
     public func reset() async throws {
-        try await stall()
+        try await stall(testing: { })
         store.reset()
         state = .ready
         refreshCount = 0
@@ -168,20 +182,21 @@ public actor Dependency<DependencyType: Sendable> {
     /// Manually refreshes the dependency from without.
     /// - Parameter freshDependency: The new dependency.
     public func refresh(dependency freshDependency: DependencyType) async throws {
-        try await stall()
+        try await stall(testing: { })
         store.newVersion(freshDependency)
         state = .ready
     }
 
-    private func stall() async throws {
+    private func stall(testing:() async throws -> ()) async throws {
         while case .refreshing = state {
             try await Task.sleep(nanoseconds: configuration.threadSleepNanoSeconds)
+            try await testing()
             await Task.yield()
         }
     }
 
     private func validateTaskTimeout(started: Date) throws {
-        guard isNotTimedOut(started: started) else {
+        guard Date().timeIntervalSince(started) < configuration.defaultTaskTimeout else {
             throw DependencyError(code: .timeout)
         }
     }
@@ -204,7 +219,4 @@ public actor Dependency<DependencyType: Sendable> {
         }
     }
 
-    private func isNotTimedOut(started: Date) -> Bool {
-        Date().timeIntervalSince(started) < configuration.defaultTaskTimeout
-    }
 }
