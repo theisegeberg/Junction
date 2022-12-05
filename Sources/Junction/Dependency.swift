@@ -61,7 +61,7 @@ public actor Dependency<DependencyType: Sendable> {
         try await run(task: task, refreshDependency: refreshDependency, started: .init())
     }
 
-    /// This will run a depedency inside of this one.
+    /// This will run a dependency inside of this one.
     /// - Parameters:
     ///   - dependency: The inner dependency to run.
     ///   - task: The task that must be run, which requires a dependency. This dependency relies on

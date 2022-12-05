@@ -79,7 +79,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testUpdateWithRefreshFailure1() async throws {
-        let runner = Dependency<Int>(configuration: .default)
+        let runner = Dependency<Int>(configuration: .recommended)
 
         let expectation = XCTestExpectation()
         do {
@@ -97,7 +97,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testUpdateWithRefreshFailure2() async throws {
-        let runner = Dependency<Int>(configuration: .default)
+        let runner = Dependency<Int>(configuration: .recommended)
 
         let tasks = Int.random(in: 0 ..< 100)
         var expectations = [XCTestExpectation]()
@@ -236,7 +236,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testTimeoutSuccess() async throws {
-        let runner = Dependency<Int>.init(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 1.5, maximumRefreshes: 4))
+        let runner = Dependency<Int>.init(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 1.5, maximumRefreshes: 1))
 
         let successResult = Int.random(in: 0 ... Int.max)
         let timeoutSuccess = try await runner.run(task: { dependency -> TaskResult<Int> in
@@ -249,7 +249,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testCriticalError() async throws {
-        let runner = Dependency<Int>(configuration: .default)
+        let runner = Dependency<Int>(configuration: .recommended)
 
         struct TestError: Error {
             let value: String
