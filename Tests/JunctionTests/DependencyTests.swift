@@ -1,9 +1,9 @@
-@testable import Junction
 import XCTest
+@testable import Junction
 
-final class BasicTests: XCTestCase {
+final class DependencyTests: XCTestCase {
     func testSuccess() async throws {
-        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 20, maximumRefreshes: 1))
+        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, timeout: 20, maximumRefreshes: 1))
         let randomNumber = Int.random(in: 0 ... Int.max)
 
         let successResult = try await runner.run { dependency in
@@ -123,7 +123,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testRefresh() async throws {
-        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 10, maximumRefreshes: 20))
+        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, timeout: 10, maximumRefreshes: 20))
 
         let tasks = Int.random(in: 1 ..< 20)
         var expectations = [XCTestExpectation]()
@@ -154,7 +154,7 @@ final class BasicTests: XCTestCase {
     }
     
     func testMaximumRefreshFailure() async throws {
-        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 10, maximumRefreshes: 10))
+        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, timeout: 10, maximumRefreshes: 10))
 
         try await runner.reset()
         let _ = try await runner.run(task: { intDependency -> TaskResult<Int> in
@@ -212,7 +212,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testTimeoutFailure() async throws {
-        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 1.5, maximumRefreshes: 4))
+        let runner = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, timeout: 1.5, maximumRefreshes: 4))
 
         let expectation = XCTestExpectation()
 
@@ -236,7 +236,7 @@ final class BasicTests: XCTestCase {
     }
 
     func testTimeoutSuccess() async throws {
-        let runner = Dependency<Int>.init(configuration: .init(threadSleepNanoSeconds: 100_000_000, defaultTaskTimeout: 1.5, maximumRefreshes: 1))
+        let runner = Dependency<Int>.init(configuration: .init(threadSleepNanoSeconds: 100_000_000, timeout: 1.5, maximumRefreshes: 1))
 
         let successResult = Int.random(in: 0 ... Int.max)
         let timeoutSuccess = try await runner.run(task: { dependency -> TaskResult<Int> in
@@ -249,13 +249,13 @@ final class BasicTests: XCTestCase {
     }
 
     func testCriticalError() async throws {
-        let runner = Dependency<Int>(configuration: .recommended)
+        let runner = Dependency<Int>(configuration: .default)
 
         struct TestError: Error {
             let value: String
         }
         let randomString = "Hello world"
-        let taskCount = Int.random(in: 3 ... 100)
+        let taskCount = Int.random(in: 10 ... 20)
         let counterOfTasksClaimingToBeOriginalError = Counter()
         var expectations = [XCTestExpectation]()
 
@@ -268,14 +268,13 @@ final class BasicTests: XCTestCase {
                     let successResult = Int.random(in: 0 ... Int.max)
                     let _ = try await runner.run(
                         task: { _ -> TaskResult<Int> in
-                            try await Task.sleep(nanoseconds: 100_000 + UInt64.random(in: 100_000 ..< 200_000))
+                            try await Task.sleep(nanoseconds: 10_000 + UInt64.random(in: 10_000 ..< 20_000))
                             return .criticalError(underlyingError: TestError(value: randomString))
                         }, refreshDependency: { _ in
                             .refreshedDependency(successResult)
                         }
                     )
                 } catch {
-                    dump(error)
                     if let error = error as? DependencyError {
                         if case let .critical(wasThrownByThisTask, underlyingError) = error.code {
                             if wasThrownByThisTask {
@@ -291,9 +290,9 @@ final class BasicTests: XCTestCase {
             }
         }
 
-        try await Task.sleep(nanoseconds: 10_000_000)
+        try await Task.sleep(nanoseconds: 1_000_000_000)
         let finalCountOfOriginalErrorClaims = await counterOfTasksClaimingToBeOriginalError.i
-        wait(for: expectations, timeout: 5)
+        wait(for: expectations, timeout: 10)
         XCTAssertEqual(finalCountOfOriginalErrorClaims, 1)
     }
 

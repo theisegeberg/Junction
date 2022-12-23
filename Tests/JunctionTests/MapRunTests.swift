@@ -1,5 +1,5 @@
-@testable import Junction
 import XCTest
+@testable import Junction
 
 final class JunctionTests: XCTestCase {
     func testDedicatedOAuthWithPureRefresh() async throws {

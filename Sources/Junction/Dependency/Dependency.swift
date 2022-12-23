@@ -13,6 +13,15 @@ public actor Dependency<DependencyType: Sendable> {
         case failedRefresh
         case maximumRefreshesReached
         case criticalError(Error?)
+        
+        var isRefreshsing:Bool {
+            if case .refreshing = self {
+                return true
+            } else {
+                return false
+            }
+        }
+        
     }
 
     private var state: State = .ready
@@ -110,7 +119,7 @@ public actor Dependency<DependencyType: Sendable> {
         refreshDependency: @Sendable (DependencyType?) async throws -> (RefreshResult<DependencyType>),
         started: Date
     ) async throws -> Success {
-        try await stall {
+        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds) {
             try validateTaskTimeout(started: started)
         }
         try validateTaskState()
@@ -173,7 +182,7 @@ public actor Dependency<DependencyType: Sendable> {
 
     /// Resets the dependency. If a refresh is running, the reset will occur after the refresh.
     public func reset() async throws {
-        try await stall(testing: { })
+        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds, testing: { })
         store.reset()
         state = .ready
         refreshCount = 0
@@ -182,21 +191,14 @@ public actor Dependency<DependencyType: Sendable> {
     /// Manually refreshes the dependency from without.
     /// - Parameter freshDependency: The new dependency.
     public func refresh(dependency freshDependency: DependencyType) async throws {
-        try await stall(testing: { })
+        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds, testing: { })
         store.newVersion(freshDependency)
+        refreshCount = 0
         state = .ready
     }
 
-    private func stall(testing:() async throws -> ()) async throws {
-        while case .refreshing = state {
-            try await Task.sleep(nanoseconds: configuration.threadSleepNanoSeconds)
-            try await testing()
-            await Task.yield()
-        }
-    }
-
     private func validateTaskTimeout(started: Date) throws {
-        guard Date().timeIntervalSince(started) < configuration.defaultTaskTimeout else {
+        guard Date().timeIntervalSince(started) < configuration.timeout else {
             throw DependencyError(code: .timeout)
         }
     }
