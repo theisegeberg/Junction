@@ -59,8 +59,6 @@ final class JunctionTests: XCTestCase {
                     }
                 } catch let error as DependencyError where error.code == .failedRefresh {
                     fatalError("Refresh failed")
-                } catch let error as DependencyError where error.code == .timeout {
-                    fatalError("Timeout")
                 }
             }
         }
@@ -116,8 +114,6 @@ final class JunctionTests: XCTestCase {
                     
                 } catch let error as DependencyError where error.code == .failedRefresh {
                     fatalError("Refresh failed")
-                } catch let error as DependencyError where error.code == .timeout {
-                    await timeOutCounter.increment()
                 }
             }
         }

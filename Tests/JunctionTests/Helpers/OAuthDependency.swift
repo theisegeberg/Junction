@@ -31,13 +31,13 @@ public struct OAuthDependency<RefreshTokenType, AccessTokenType> {
     ) async throws -> Success {
         try await refreshDependency
             .mapRun(dependency: accessDependency, task: {
-                _, accessDependency in
+                _,accessDependency,_,_ in
                 try await task(accessDependency)
             }, innerRefresh: {
-                refreshDependency, failedAccessToken in
+                refreshDependency, failedAccessToken, _, _ in
                 try await refreshAccessToken(refreshDependency, failedAccessToken)
             }, outerRefresh: {
-                accessRunner, failedRefreshToken in
+                accessRunner, failedRefreshToken, _, _ in
                 switch try await refreshRefreshToken(failedRefreshToken) {
                 case .failedRefresh:
                     return .failedRefresh
