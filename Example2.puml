@@ -1,0 +1,87 @@
+@startuml
+
+box Client
+participant Alice as a
+participant Bob as b
+participant RefreshService as refresh
+end box
+
+box
+participant Transit as e
+end box
+
+box API
+participant Resource as res
+participant Auth as auth
+end box
+
+note over e
+**First problem solution**
+
+**Premise**
+Alice and Bob run concurrently. Each are allowed to refresh 
+the access token using the refresh token.
+
+Refresh tokens remain the same through all operations.
+
+**Solution**
+Alice and Bob refreshes access tokens with a service, in
+order to not end up in a deadlock.
+end note
+
+
+note right of auth
+<color blue>refreshToken1</color>
+<color black>accessToken42</color>
+end note
+
+note left of a
+<color blue>refreshToken1</color>
+<color red>accessToken1</color>
+end note
+
+a -[#green]> res: 1 <color red>accessToken1</color>
+b -[#maroon]> res: 2 <color red>accessToken1</color>
+
+a <[#green]-- res: 1 ✋ Invalid access token
+e <[#maroon]-- res: 2 ✋ Invalid access token
+activate e #DarkSalmon
+
+a -[#green]> refresh: 3 Refresh access token
+activate refresh #DarkCyan
+refresh -[#green]> auth: 3 <color blue>refreshToken1</color>
+
+auth -> auth: 3 Update access token
+
+note right of auth
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+e <[#green]-- auth: 3 <color purple>accessToken2</color>
+
+b <[#maroon]-- e: 2 ✋ Invalid access token
+deactivate e
+
+b -[#maroon]> refresh: 4 Refresh access token
+
+refresh <[#green]-- e: 3 <color purple>accessToken2</color>
+
+a <[#green]-- refresh: 3 <color purple>accessToken2</color>
+b <[#maroon]-- refresh: 4 <color purple>accessToken2</color>
+
+deactivate refresh
+
+note left of a
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+a -[#green]> res: 5 <color purple>accessToken2</color>
+b -[#maroon]> res: 6 <color purple>accessToken2</color>
+
+a <[#green]-- res: 5 👍 Valid access token
+a <[#maroon]-- res: 6 👍 Valid access token
+
+
+@enduml

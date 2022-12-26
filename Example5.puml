@@ -1,0 +1,95 @@
+@startuml
+
+box Client
+participant Alice as a
+participant RefreshService as refresh
+end box
+
+box API
+participant Resource as res
+participant Auth as auth
+end box
+
+note over refresh
+**Third problem**
+
+**Premise**
+Alice and Bob run concurrently. Each are allowed to refresh 
+the access token using the refresh token.
+
+Refresh tokens remain the same through all operations.
+
+Alice and Bob refreshes access tokens with a service, in
+order to not end up in a deadlock. The service checks
+for locally updated access tokens before refreshing.
+
+**The problem**
+
+API fails to validate the access token.
+
+Locking Alice into a request/refresh loop.
+end note
+
+note right of auth
+<color blue>refreshToken1</color>
+<color black>accessToken42</color>
+end note
+
+note left of a
+<color blue>refreshToken1</color>
+<color red>accessToken1</color>
+end note
+
+a -[#green]> res: 1 <color red>accessToken1</color>
+
+a <[#green]-- res: 1 ✋ Invalid <color red>accessToken1</color>
+
+a -[#green]> refresh: 2 Refresh <color red>accessToken1</color>
+refresh -[#green]> auth: 2 <color blue>refreshToken1</color>
+
+auth -> auth: 2 Update access token
+
+note right of auth
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+refresh <[#green]-- auth: 2 <color purple>accessToken2</color>
+
+a <[#green]-- refresh: 2 <color purple>accessToken2</color>
+
+note left of a
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+a -[#green]> res: 3 <color purple>accessToken2</color>
+
+a <[#green]-- res: 3 ✋ Invalid accessToken2
+
+
+
+a -[#green]> refresh: 4 Refresh <color red>accessToken1</color>
+refresh -[#green]> auth: 4 <color blue>refreshToken1</color>
+
+auth -> auth: 4 Update access token
+
+note right of auth
+<color blue>refreshToken1</color>
+<color darkorange>accessToken3</color>
+end note
+
+refresh <[#green]-- auth: 4 <color darkorange>accessToken3</color>
+
+a <[#green]-- refresh: 4 <color darkorange>accessToken3</color>
+
+note left of a
+<color blue>refreshToken1</color>
+<color darkorange>accessToken3</color>
+end note
+
+a -[#green]> res: 4 <color darkorange>accessToken3</color>
+
+a <[#green]-- res: 4 ✋ Invalid accessToken2
+
+@enduml

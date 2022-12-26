@@ -1,0 +1,106 @@
+@startuml
+
+box Client
+participant Alice as a
+participant Bob as b
+end box
+
+box
+participant A as eA
+participant B as eB
+end box
+
+box API
+participant Resource as res
+participant Auth as auth
+end box
+
+note over eA
+**First problem**
+
+**Premise**
+Alice and Bob run concurrently. Each are allowed to refresh 
+the access token using the refresh token.
+
+Refresh tokens remain the same through all operations.
+
+**Notes**
+Concurrent code does not guarantee a sequence. The example 
+below is one of many ways it can go wrong.
+
+**Problem**
+A and B start with an invalid access token. A refreshes to
+accessToken2 and B to accessToken3. A retries with accessToken2
+which is invalid at this point. A can then deadlock B by fetching
+a new access token.
+
+end note
+
+note right of auth
+<color blue>refreshToken1</color>
+<color black>accessToken42</color>
+end note
+
+note left of a
+<color blue>refreshToken1</color>
+<color red>accessToken1</color>
+end note
+
+a -[#green]> res: 1 <color red>accessToken1</color>
+b -[#maroon]> res: 2 <color red>accessToken1</color>
+
+a <[#green]-- res: 1 ✋ Invalid access token
+eB <[#maroon]-- res: 2 ✋ Invalid access token
+activate eB #DarkSalmon
+
+a -[#green]> auth: 3 <color blue>refreshToken1</color>
+
+auth -> auth: 3 Update access token
+
+
+note right of auth
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+eA <[#green]-- auth: 3 <color purple>accessToken2</color>
+activate eA #DarkGreen
+
+
+b <[#maroon]-- eB: 2 ✋ Invalid access token
+deactivate eB
+
+b -[#maroon]> auth: 4 <color blue>refreshToken1</color>
+
+auth -> auth: Update access token
+
+note right of auth
+<color blue>refreshToken1</color>
+<color orange>accessToken3</color>
+end note
+
+eB <[#maroon]-- auth: 4 <color orange>accessToken3</color>
+activate eB #DarkSalmon
+
+a <[#green]-- eA: 3 <color purple>accessToken2</color>
+deactivate eA
+
+note left of a
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+a -[#green]> res: 5 <color purple>accessToken2</color>
+
+
+a <[#green]-- res: 5 ✋ Invalid access token
+
+b <[#maroon]-- eB: 4 <color orange>accessToken3</color>
+deactivate eB
+
+note left of a
+<color blue>refreshToken1</color>
+<color orange>accessToken3</color>
+end note
+
+@enduml

@@ -1,0 +1,107 @@
+@startuml
+
+box Client
+participant Alice as a
+participant Bob as b
+participant RefreshService as refresh
+end box
+
+box
+participant Transit as e
+end box
+
+box API
+participant Resource as res
+participant Auth as auth
+end box
+
+note over e
+**Second problem**
+
+**Premise**
+Alice and Bob run concurrently. Each are allowed to refresh 
+the access token using the refresh token.
+
+Refresh tokens remain the same through all operations.
+
+Alice and Bob refreshes access tokens with a service, in
+order to not end up in a deadlock.
+
+**The problem**
+
+A and B started with an invalid access token. A refreshed
+the access token to accessToken2 before B returned. B returns
+and triggers a refresh to accessToken3. A tries again with
+accessToken2 but arrives after B's update. A is rejected again.
+end note
+
+note right of auth
+<color blue>refreshToken1</color>
+<color black>accessToken42</color>
+end note
+
+note left of a
+<color blue>refreshToken1</color>
+<color red>accessToken1</color>
+end note
+
+a -[#green]> res: 1 <color red>accessToken1</color>
+b -[#maroon]> res: 2 <color red>accessToken1</color>
+
+a <[#green]-- res: 1 ✋ Invalid access token
+e <[#maroon]-- res: 2 ✋ Invalid access token
+activate e #DarkSalmon
+
+
+a -[#green]> refresh: 3 Refresh access token
+activate refresh
+refresh -[#green]> auth: 3 <color blue>refreshToken1</color>
+
+auth -> auth: 3 Update access token
+
+note right of auth
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+refresh <[#green]-- auth: 3 <color purple>accessToken2</color>
+
+a <[#green]-- refresh: 3 <color purple>accessToken2</color>
+deactivate refresh
+
+note left of a
+<color blue>refreshToken1</color>
+<color purple>accessToken2</color>
+end note
+
+b <[#maroon]-- e: 2 ✋ Invalid access token
+deactivate e
+
+a -[#green]> e: 4 <color purple>accessToken2</color>
+activate e #DarkGreen
+
+
+
+
+b -[#maroon]> refresh: 5 Refresh access token
+activate refresh
+
+refresh -[#maroon]> auth: 5 Refresh access token
+
+auth -> auth: 3 Update access token
+
+note right of auth
+<color blue>refreshToken1</color>
+<color darkorange>accessToken3</color>
+end note
+
+e -[#green]> res: 4 <color purple>accessToken2</color>
+deactivate e
+
+b <[#maroon]-- refresh: 5 <color darkorange>accessToken3</color>
+deactivate refresh
+
+a <[#green]-- res: 4 ✋ Invalid access token
+
+
+@enduml
