@@ -6,9 +6,9 @@ final class DependencyTests: XCTestCase {
         let dependency = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000))
         let randomNumber = Int.random(in: 0 ... Int.max)
 
-        let successResult = try await Task.inject(dependency: dependency) { dependency,_,_ in
+        let successResult = try await Task.inject(dependency: dependency) { dependency,_ in
             .success(dependency)
-        } refresh: { _,_,_ in
+        } refresh: { _,_ in
             .refreshedDependency(randomNumber)
         }
 
@@ -19,10 +19,10 @@ final class DependencyTests: XCTestCase {
         let dependency = Dependency<Int>(configuration: .default)
         let randomNumber = Int.random(in: 0 ... Int.max)
         let task = Task { () throws -> Int in
-            let successResult = try await Task.inject(dependency: dependency) { dependency,_,_ in
+            let successResult = try await Task.inject(dependency: dependency) { dependency,_ in
                 try await Task.sleep(nanoseconds: 1_000_000)
                 return .success(dependency)
-            } refresh: { _,_,_ in
+            } refresh: { _,_ in
                 try await Task.sleep(nanoseconds: 1_000_000)
                 return .refreshedDependency(randomNumber)
             }
@@ -61,14 +61,14 @@ final class DependencyTests: XCTestCase {
         let temporarilyRefreshedDependency = OutsideValue(value: 0)
 
         let expectedNumber = 3
-        let incrementingResult = try await Task.inject(dependency: dependency) { dependency,_,_ in
+        let incrementingResult = try await Task.inject(dependency: dependency) { dependency,_ in
             XCTAssertLessThanOrEqual(dependency, expectedNumber)
             if dependency == expectedNumber {
                 return .success(dependency)
             } else {
                 return .dependencyRequiresRefresh
             }
-        } refresh: { _,_,_ in
+        } refresh: { _,_ in
             await temporarilyRefreshedDependency.increment()
             let value = await temporarilyRefreshedDependency.value
             XCTAssertLessThanOrEqual(value, expectedNumber)
@@ -83,9 +83,9 @@ final class DependencyTests: XCTestCase {
 
         let expectation = XCTestExpectation()
         do {
-            let _ = try await Task.inject(dependency: dependency, task: { _,_,_ -> TaskResult<Int> in
+            let _ = try await Task.inject(dependency: dependency, task: { _,_ -> TaskResult<Int> in
                 .dependencyRequiresRefresh
-            }, refresh: { _,_,_ in
+            }, refresh: { _,_ in
                 .failedRefresh
             })
         } catch {
@@ -107,9 +107,9 @@ final class DependencyTests: XCTestCase {
             expectations.append(expectation)
             Task {
                 do {
-                    let _ = try await Task.inject(dependency: dependency, task: { _,_,_ -> TaskResult<Int> in
+                    let _ = try await Task.inject(dependency: dependency, task: { _,_ -> TaskResult<Int> in
                         fatalError("Should never occur")
-                    }, refresh: { _,_,_ in
+                    }, refresh: { _,_ in
                         .failedRefresh
                     })
                 } catch {
@@ -133,13 +133,13 @@ final class DependencyTests: XCTestCase {
             expectations.append(expectation)
             Task {
                 do {
-                    let result = try await Task.inject(dependency: dependency, task: { intDependency,_,_ -> TaskResult<Int> in
+                    let result = try await Task.inject(dependency: dependency, task: { intDependency,_ -> TaskResult<Int> in
                         try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
                         if intDependency < 10 {
                             return .dependencyRequiresRefresh
                         }
                         return .success(intDependency)
-                    }, refresh: { lastDependency,_,_ in
+                    }, refresh: { lastDependency,_ in
                         try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
                         return .refreshedDependency((lastDependency ?? 0) + 1)
                     })
@@ -157,36 +157,36 @@ final class DependencyTests: XCTestCase {
         let dependency = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000))
 
         try await dependency.reset()
-        let _ = try await Task.inject(dependency: dependency, task: { intDependency,_,_ -> TaskResult<Int> in
+        let _ = try await Task.inject(dependency: dependency, task: { intDependency,_ -> TaskResult<Int> in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
             if intDependency < 10 {
                 return .dependencyRequiresRefresh
             }
             return .success(intDependency)
-        }, refresh: { lastDependency,_,_ in
+        }, refresh: { lastDependency,_ in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
             return .refreshedDependency((lastDependency ?? 0) + 1)
         })
         
         try await dependency.reset()
-        let _ = try await Task.inject(dependency: dependency, task: { intDependency,_,_ -> TaskResult<Int> in
+        let _ = try await Task.inject(dependency: dependency, task: { intDependency,_ -> TaskResult<Int> in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
             if intDependency < 10 {
                 return .dependencyRequiresRefresh
             }
             return .success(intDependency)
-        }, refresh: { lastDependency,_,_ in
+        }, refresh: { lastDependency,_ in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
             return .refreshedDependency((lastDependency ?? 0) + 1)
         })
 
-        let _ = try await Task.inject(dependency: dependency, task: { intDependency,_,_ -> TaskResult<Int> in
+        let _ = try await Task.inject(dependency: dependency, task: { intDependency,_ -> TaskResult<Int> in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 100_000 ..< 200_000))
             if intDependency < 9 {
                 return .dependencyRequiresRefresh
             }
             return .success(intDependency)
-        }, refresh: { lastDependency,_,_ in
+        }, refresh: { lastDependency,_ in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
             return .refreshedDependency((lastDependency ?? 0) + 1)
         })
@@ -202,10 +202,10 @@ final class DependencyTests: XCTestCase {
 //            let successResult = Int.random(in: 0 ... Int.max)
 //            let _ = try await Task.inject(
 //                dependency: dependency,
-//                task: { _,_,_ -> TaskResult<Int> in
+//                task: { _,_ -> TaskResult<Int> in
 //                    XCTFail("Should not happen")
 //                    fatalError("Should never occur")
-//                }, refresh: { _,_,_ in
+//                }, refresh: { _,_ in
 //                    try await Task.sleep(nanoseconds: UInt64(1.5 * 1_000_000_000))
 //                    return .refreshedDependency(successResult)
 //                }
@@ -223,9 +223,9 @@ final class DependencyTests: XCTestCase {
 
         let successResult = Int.random(in: 0 ... Int.max)
         let timeoutSuccess = try await Task.inject(
-            dependency: dependency, task: { dependency,_,_ -> TaskResult<Int> in
+            dependency: dependency, task: { dependency,_ -> TaskResult<Int> in
             .success(dependency)
-        }, refresh: { _,_,_ in
+        }, refresh: { _,_ in
             try await Task.sleep(nanoseconds: UInt64(1.5 * 0.8 * 1_000_000_000))
             return .refreshedDependency(successResult)
         })
@@ -252,10 +252,10 @@ final class DependencyTests: XCTestCase {
                     let successResult = Int.random(in: 0 ... Int.max)
                     let _ = try await Task.inject(
                         dependency: dependency,
-                        task: { _,_,_ -> TaskResult<Int> in
+                        task: { _,_ -> TaskResult<Int> in
                             try await Task.sleep(nanoseconds: 10_000 + UInt64.random(in: 10_000 ..< 20_000))
                             return .criticalError(underlyingError: TestError(value: randomString))
-                        }, refresh: { _,_,_ in
+                        }, refresh: { _,_ in
                             .refreshedDependency(successResult)
                         }
                     )

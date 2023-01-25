@@ -4,12 +4,12 @@ public extension Task where Failure == Never, Success == Failure {
     
     static func retry<Success:Sendable>(
         configuration:RetryConfiguration,
-        task:(_ retryIteration:Int, _ totalSleepTimeNanoseconds:UInt64) async throws -> (RetryResult<Success>)
+        task:(_ retryIteration:Int, _ time:TimeInterval) async throws -> (RetryResult<Success>)
     ) async throws -> Success {
         try await retry(
             configuration: configuration,
             retryIteration: 0,
-            totalSleepTimeNanoseconds: 0,
+            started: Date(),
             task: task
         )
     }
@@ -17,8 +17,8 @@ public extension Task where Failure == Never, Success == Failure {
     private static func retry<Success:Sendable>(
         configuration:RetryConfiguration,
         retryIteration:Int,
-        totalSleepTimeNanoseconds:UInt64,
-        task:(_ retryIteration:Int, _ totalSleepTimeNanoseconds:UInt64) async throws -> (RetryResult<Success>)
+        started:Date,
+        task:(_ retryIteration:Int, _ time:TimeInterval) async throws -> (RetryResult<Success>)
     ) async throws -> Success {
         guard configuration.shouldRetry(atRetryIteration: retryIteration) else {
             throw RetryError.maximumRetriesReached
@@ -28,15 +28,14 @@ public extension Task where Failure == Never, Success == Failure {
             try await Task.sleep(
                 nanoseconds: nextSleep
             )
-            let totalSleepSoFar = totalSleepTimeNanoseconds + nextSleep
-            switch try await task(retryIteration, totalSleepSoFar) {
+            switch try await task(retryIteration, Date().timeIntervalSince(started)) {
                 case .success(let success):
                     return success
                 case .retry:
                     return try await retry(
                         configuration: configuration,
                         retryIteration: retryIteration + 1,
-                        totalSleepTimeNanoseconds: totalSleepSoFar,
+                        started: started,
                         task: task
                     )
             }

@@ -1,18 +1,6 @@
 
 import Foundation
 
-public extension Task where Failure == Never, Success == Failure {
-    
-    static func inject<Success, DependencyType:Sendable>(
-        dependency: Dependency<DependencyType>,
-        task: @Sendable (_ dependency:DependencyType, _ refreshCount:Int, _ time:TimeInterval) async throws -> TaskResult<Success>,
-        refresh: @Sendable (_ failedDependency:DependencyType?, _ refreshCount:Int, _ time:TimeInterval) async throws -> RefreshResult<DependencyType>
-    ) async throws -> Success {
-        try await dependency.run(task: task, refresh: refresh)
-    }
-    
-}
-
 /// An `actor` that handles both providing and creating a dependency. It can handle many asynchronous
 /// tasks  that all depend upon one shared dependency. If that value becomes invalid then a single refresh
 /// will be attempted while all the tasks are put in a holding pattern. Once the dependency has been
@@ -75,8 +63,8 @@ public actor Dependency<DependencyType: Sendable> {
     ///   against infinite `try -> refresh -> try` loops.
     /// - Returns: The result of the task in the case where it succeeds.
     internal func run<Success>(
-        task: @Sendable (_ dependency:DependencyType, _ refreshCount:Int, _ time:TimeInterval) async throws -> (TaskResult<Success>),
-        refresh: @Sendable (_ dependency:DependencyType?, _ refreshCount:Int, _ time:TimeInterval) async throws -> (RefreshResult<DependencyType>)
+        task: @Sendable (_ dependency:DependencyType, _ context:RefreshContext) async throws -> (TaskResult<Success>),
+        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>)
     ) async throws -> Success {
         try await run(task: task, refresh: refresh, started: .init())
     }
@@ -92,22 +80,22 @@ public actor Dependency<DependencyType: Sendable> {
     /// - Returns: The `Success` result of the task.
     public func mapRun<InnerDependency: Sendable, Success: Sendable>(
         dependency: Dependency<InnerDependency>,
-        task: @Sendable (_ outer:DependencyType, _ inner:InnerDependency, _ refreshCount:Int, _ time:TimeInterval) async throws -> TaskResult<Success>,
-        innerRefresh: @Sendable (_ outer:DependencyType, _ inner:InnerDependency?, _ refreshCount:Int, _ time:TimeInterval) async throws -> (RefreshResult<InnerDependency>),
-        outerRefresh: @Sendable (_ dependency:Dependency<InnerDependency>, _ outer:DependencyType?, _ refreshCount:Int, _ time:TimeInterval) async throws -> (RefreshResult<DependencyType>)
+        task: @Sendable (_ outer:DependencyType, _ inner:InnerDependency, _ context:RefreshContext) async throws -> TaskResult<Success>,
+        innerRefresh: @Sendable (_ outer:DependencyType, _ inner:InnerDependency?, _ context:RefreshContext) async throws -> (RefreshResult<InnerDependency>),
+        outerRefresh: @Sendable (_ dependency:Dependency<InnerDependency>, _ outer:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>)
     ) async throws -> Success {
         try await run(
             task: {
-                outerDependency, refreshCount, time -> TaskResult<Success> in
+                outerDependency, context -> TaskResult<Success> in
                 do {
                     return try await .success(
                         dependency
                             .run(
-                                task: { innerDependency, refreshCount, time -> TaskResult<Success> in
-                                    try await task(outerDependency, innerDependency, refreshCount, time)
+                                task: { innerDependency, context -> TaskResult<Success> in
+                                    try await task(outerDependency, innerDependency, context)
                                 },
-                                refresh: { innerDependency, refreshCount, time in
-                                    try await innerRefresh(outerDependency, innerDependency, refreshCount, time)
+                                refresh: { innerDependency, context in
+                                    try await innerRefresh(outerDependency, innerDependency, context)
                                 }
                             )
                     )
@@ -116,8 +104,8 @@ public actor Dependency<DependencyType: Sendable> {
                 }
             },
             refresh: {
-                outerDependency, refreshCount, time in
-                try await outerRefresh(dependency, outerDependency, refreshCount, time)
+                outerDependency, context in
+                try await outerRefresh(dependency, outerDependency, context)
             }
         )
     }
@@ -126,13 +114,11 @@ public actor Dependency<DependencyType: Sendable> {
     /// This is the entrance method of all runs, and contains the pseudo state machine that handles the
     /// running.
     private func run<Success>(
-        task: @Sendable (_ dependency:DependencyType, _ refreshCount:Int, _ time:TimeInterval) async throws -> (TaskResult<Success>),
-        refresh: @Sendable (_ dependency:DependencyType?, _ refreshCount:Int, _ time:TimeInterval) async throws -> (RefreshResult<DependencyType>),
+        task: @Sendable (_ dependency:DependencyType, _ context:RefreshContext) async throws -> (TaskResult<Success>),
+        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>),
         started: Date
     ) async throws -> Success {
-        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds) {
-            
-        }
+        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds)
         try validateTaskState()
 
         guard let actualDependency = store.getLatest(),
@@ -143,8 +129,13 @@ public actor Dependency<DependencyType: Sendable> {
             refreshCount = refreshCount + 1
             try validateTaskState()
             
-            
-            switch try await refresh(store.getLatest(), refreshCount, Date().timeIntervalSince(started)) {
+            switch try await refresh(
+                store.getLatest(),
+                RefreshContext(
+                    repeatedRefreshCount: refreshCount,
+                    time: Date().timeIntervalSince(started)
+                )
+            ) {
             case let .refreshedDependency(refreshed):
                 store.newVersion(refreshed)
                 state = .ready
@@ -160,7 +151,13 @@ public actor Dependency<DependencyType: Sendable> {
         }
 
         let versionAtRun = store.getVersion()
-        let taskResult = try await task(actualDependency, refreshCount, Date().timeIntervalSince(started))
+        let taskResult = try await task(
+            actualDependency,
+            RefreshContext(
+                repeatedRefreshCount: refreshCount,
+                time: Date().timeIntervalSince(started)
+            )
+        )
         try validateTaskState()
         switch taskResult {
         case let .success(success):
@@ -191,7 +188,7 @@ public actor Dependency<DependencyType: Sendable> {
 
     /// Resets the dependency. If a refresh is running, the reset will occur after the refresh.
     public func reset() async throws {
-        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds, testing: { })
+        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds)
         store.reset()
         state = .ready
         refreshCount = 0
@@ -200,7 +197,7 @@ public actor Dependency<DependencyType: Sendable> {
     /// Manually refreshes the dependency from without.
     /// - Parameter freshDependency: The new dependency.
     public func refresh(dependency freshDependency: DependencyType) async throws {
-        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds, testing: { })
+        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds)
         store.newVersion(freshDependency)
         refreshCount = 0
         state = .ready
