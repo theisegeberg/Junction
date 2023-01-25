@@ -33,7 +33,7 @@ final class DependencyTests: XCTestCase {
         do {
             let _ = try await task.value
             XCTFail("Should not get to here")
-        } catch let dependencyError as DependencyError where dependencyError.code == .cancelled {
+        } catch is CancellationError {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 1.0)
@@ -284,7 +284,5 @@ final class DependencyTests: XCTestCase {
     func testError() {
         XCTAssertEqual(DependencyError(code: .critical(wasThrownByThisTask: true, error: nil)), DependencyError(code: .critical(wasThrownByThisTask: false, error: nil)))
         XCTAssertEqual(DependencyError(code: .failedRefresh), DependencyError(code: .failedRefresh))
-        XCTAssertEqual(DependencyError(code: .cancelled), DependencyError(code: .cancelled))
-        XCTAssertNotEqual(DependencyError(code: .failedRefresh), DependencyError(code: .cancelled))
     }
 }

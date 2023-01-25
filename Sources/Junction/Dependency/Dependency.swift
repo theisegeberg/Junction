@@ -191,11 +191,7 @@ public actor Dependency<DependencyType: Sendable> {
         case .refreshing, .ready:
             break
         }
-        do {
-            try Task.checkCancellation()
-        } catch {
-            throw DependencyError(code: .cancelled)
-        }
+        try Task.checkCancellation()
     }
 
 }
