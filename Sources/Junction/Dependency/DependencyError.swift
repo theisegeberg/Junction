@@ -20,7 +20,7 @@ public struct DependencyError: LocalizedError, Equatable {
         /// Dependency failed to refresh
         case failedRefresh
         /// Critical error, this will end all other tasks performed by this `Dependency` as well. The task that throws this error will have `wasThrownByThisTask` set to true, other tasks will return false. It is not guaranteed that calls can not return after this has occured. But once it has occured a check will occur before attempting the next call.
-        case critical(wasThrownByThisTask: Bool, error: Error?)
+        case critical(wasThrownByThisTask: Bool, error: Error)
     }
 
     public let code: ErrorCode

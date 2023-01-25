@@ -8,5 +8,5 @@ public enum TaskResult<Success> {
     case dependencyRequiresRefresh
     /// This causes all calls on the current `Dependency` to throw a `DependencyError` with code .critical.
     /// This is useful when you want to stop anything using this dependency currently.
-    case criticalError(underlyingError: Error?)
+    case criticalError(underlyingError: Error)
 }

@@ -15,7 +15,7 @@ public extension Task where Failure == Never, Success == Failure {
     static func inject<Success, DependencyType:Sendable>(
         dependency: Dependency<DependencyType>,
         task: @Sendable (_ dependency:DependencyType, _ context:RefreshContext) async throws -> TaskResult<Success>,
-        refresh: @Sendable (_ failedDependency:DependencyType?, _ context:RefreshContext) async throws -> RefreshResult<DependencyType>
+        refresh: @Sendable (_ failedDependency:DependencyType?, _ context:RefreshContext) async throws -> DependencyType?
     ) async throws -> Success {
         try await dependency.run(task: task, refresh: refresh)
     }

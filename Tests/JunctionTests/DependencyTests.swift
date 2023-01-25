@@ -9,7 +9,7 @@ final class DependencyTests: XCTestCase {
         let successResult = try await Task.inject(dependency: dependency) { dependency,_ in
             .success(dependency)
         } refresh: { _,_ in
-            .refreshedDependency(randomNumber)
+            randomNumber
         }
 
         XCTAssertEqual(successResult, randomNumber)
@@ -24,7 +24,7 @@ final class DependencyTests: XCTestCase {
                 return .success(dependency)
             } refresh: { _,_ in
                 try await Task.sleep(nanoseconds: 1_000_000)
-                return .refreshedDependency(randomNumber)
+                return randomNumber
             }
             return successResult
         }
@@ -72,7 +72,7 @@ final class DependencyTests: XCTestCase {
             await temporarilyRefreshedDependency.increment()
             let value = await temporarilyRefreshedDependency.value
             XCTAssertLessThanOrEqual(value, expectedNumber)
-            return .refreshedDependency(await temporarilyRefreshedDependency.value)
+            return await temporarilyRefreshedDependency.value
         }
 
         XCTAssertEqual(incrementingResult, expectedNumber)
@@ -86,7 +86,7 @@ final class DependencyTests: XCTestCase {
             let _ = try await Task.inject(dependency: dependency, task: { _,_ -> TaskResult<Int> in
                 .dependencyRequiresRefresh
             }, refresh: { _,_ in
-                .failedRefresh
+                return nil
             })
         } catch {
             if let error = error as? DependencyError, error.code == .failedRefresh {
@@ -110,7 +110,7 @@ final class DependencyTests: XCTestCase {
                     let _ = try await Task.inject(dependency: dependency, task: { _,_ -> TaskResult<Int> in
                         fatalError("Should never occur")
                     }, refresh: { _,_ in
-                        .failedRefresh
+                        return nil
                     })
                 } catch {
                     if let error = error as? DependencyError, error.code == .failedRefresh {
@@ -141,7 +141,7 @@ final class DependencyTests: XCTestCase {
                         return .success(intDependency)
                     }, refresh: { lastDependency,_ in
                         try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
-                        return .refreshedDependency((lastDependency ?? 0) + 1)
+                        return (lastDependency ?? 0) + 1
                     })
                     XCTAssertEqual(result, 10)
                     expectation.fulfill()
@@ -165,7 +165,7 @@ final class DependencyTests: XCTestCase {
             return .success(intDependency)
         }, refresh: { lastDependency,_ in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
-            return .refreshedDependency((lastDependency ?? 0) + 1)
+            return (lastDependency ?? 0) + 1
         })
         
         try await dependency.reset()
@@ -177,7 +177,7 @@ final class DependencyTests: XCTestCase {
             return .success(intDependency)
         }, refresh: { lastDependency,_ in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
-            return .refreshedDependency((lastDependency ?? 0) + 1)
+            return (lastDependency ?? 0) + 1
         })
 
         let _ = try await Task.inject(dependency: dependency, task: { intDependency,_ -> TaskResult<Int> in
@@ -188,35 +188,10 @@ final class DependencyTests: XCTestCase {
             return .success(intDependency)
         }, refresh: { lastDependency,_ in
             try await Task.sleep(nanoseconds: 50000 + UInt64.random(in: 400_000 ..< 500_000))
-            return .refreshedDependency((lastDependency ?? 0) + 1)
+            return (lastDependency ?? 0) + 1
         })
         
     }
-
-//    func testTimeoutFailure() async throws {
-//        let dependency = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000, timeout: 1.5, maximumRefreshes: 4))
-//
-//        let expectation = XCTestExpectation()
-//
-//        do {
-//            let successResult = Int.random(in: 0 ... Int.max)
-//            let _ = try await Task.inject(
-//                dependency: dependency,
-//                task: { _,_ -> TaskResult<Int> in
-//                    XCTFail("Should not happen")
-//                    fatalError("Should never occur")
-//                }, refresh: { _,_ in
-//                    try await Task.sleep(nanoseconds: UInt64(1.5 * 1_000_000_000))
-//                    return .refreshedDependency(successResult)
-//                }
-//            )
-//        } catch {
-//            if let error = error as? DependencyError, error.code == .timeout {
-//                expectation.fulfill()
-//            }
-//        }
-//        wait(for: [expectation], timeout: 0.1)
-//    }
 
     func testTimeoutSuccess() async throws {
         let dependency = Dependency<Int>(configuration: .init(threadSleepNanoSeconds: 100_000_000))
@@ -227,7 +202,7 @@ final class DependencyTests: XCTestCase {
             .success(dependency)
         }, refresh: { _,_ in
             try await Task.sleep(nanoseconds: UInt64(1.5 * 0.8 * 1_000_000_000))
-            return .refreshedDependency(successResult)
+            return successResult
         })
         XCTAssertEqual(timeoutSuccess, successResult)
     }
@@ -256,7 +231,7 @@ final class DependencyTests: XCTestCase {
                             try await Task.sleep(nanoseconds: 10_000 + UInt64.random(in: 10_000 ..< 20_000))
                             return .criticalError(underlyingError: TestError(value: randomString))
                         }, refresh: { _,_ in
-                            .refreshedDependency(successResult)
+                            successResult
                         }
                     )
                 } catch {
@@ -282,7 +257,7 @@ final class DependencyTests: XCTestCase {
     }
 
     func testError() {
-        XCTAssertEqual(DependencyError(code: .critical(wasThrownByThisTask: true, error: nil)), DependencyError(code: .critical(wasThrownByThisTask: false, error: nil)))
+        XCTAssertEqual(DependencyError(code: .critical(wasThrownByThisTask: true, error: CancellationError())), DependencyError(code: .critical(wasThrownByThisTask: false, error: CancellationError())))
         XCTAssertEqual(DependencyError(code: .failedRefresh), DependencyError(code: .failedRefresh))
     }
 }

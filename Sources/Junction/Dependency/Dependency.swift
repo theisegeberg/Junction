@@ -11,7 +11,7 @@ public actor Dependency<DependencyType: Sendable> {
         case ready
         case refreshing
         case failedRefresh
-        case criticalError(Error?)
+        case criticalError(Error)
         
         var isRefreshsing:Bool {
             if case .refreshing = self {
@@ -53,8 +53,8 @@ public actor Dependency<DependencyType: Sendable> {
     public func mapRun<InnerDependency: Sendable, Success: Sendable>(
         dependency: Dependency<InnerDependency>,
         task: @Sendable (_ outer:DependencyType, _ inner:InnerDependency, _ context:RefreshContext) async throws -> TaskResult<Success>,
-        innerRefresh: @Sendable (_ outer:DependencyType, _ inner:InnerDependency?, _ context:RefreshContext) async throws -> (RefreshResult<InnerDependency>),
-        outerRefresh: @Sendable (_ dependency:Dependency<InnerDependency>, _ outer:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>)
+        innerRefresh: @Sendable (_ outer:DependencyType, _ inner:InnerDependency?, _ context:RefreshContext) async throws -> InnerDependency?,
+        outerRefresh: @Sendable (_ dependency:Dependency<InnerDependency>, _ outer:DependencyType?, _ context:RefreshContext) async throws -> DependencyType?
     ) async throws -> Success {
         try await run(
             task: {
@@ -84,7 +84,7 @@ public actor Dependency<DependencyType: Sendable> {
 
     func run<Success>(
         task: @Sendable (_ dependency:DependencyType, _ context:RefreshContext) async throws -> (TaskResult<Success>),
-        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>)
+        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> DependencyType?
     ) async throws -> Success {
         try await run(task: task, refresh: refresh, started: .init())
     }
@@ -94,7 +94,7 @@ public actor Dependency<DependencyType: Sendable> {
     /// running.
     private func run<Success>(
         task: @Sendable (_ dependency:DependencyType, _ context:RefreshContext) async throws -> (TaskResult<Success>),
-        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>),
+        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> DependencyType?,
         started: Date
     ) async throws -> Success {
         try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds)
@@ -115,7 +115,7 @@ public actor Dependency<DependencyType: Sendable> {
                     time: Date().timeIntervalSince(started)
                 )
             ) {
-            case let .refreshedDependency(refreshed):
+            case let .some(refreshed):
                 store.newVersion(refreshed)
                 state = .ready
                 return try await run(
@@ -123,7 +123,7 @@ public actor Dependency<DependencyType: Sendable> {
                     refresh: refresh,
                     started: started
                 )
-            case .failedRefresh:
+            case .none:
                 state = .failedRefresh
                 throw DependencyError(code: .failedRefresh)
             }
