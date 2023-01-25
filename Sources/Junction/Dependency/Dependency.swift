@@ -41,34 +41,6 @@ public actor Dependency<DependencyType: Sendable> {
         self.configuration = configuration
     }
 
-    /// Tries to execute a task that requires a `Dependency`. If the `Dependency` is invalid or missing it
-    /// attempts to refresh the dependency with the given closure.
-    ///
-    /// If you need to inject an original dependency value, then you can check in the refreshDependency
-    /// closure whether or not the dependency is nil. If it's nil then there is no dependency present, and you
-    /// can fetch and return it here. If it's not nil then the value is the dependency that was attempted.
-    ///
-    /// - Throws: A `DependencyError` which can be a timeout or a failure to refresh. If But also
-    /// rethrows any error that the `.run` task may throw.
-    ///
-    /// - Parameters:
-    ///   - task: The job to be performed. Must return a `TaskResult` which can either mean that it
-    ///   succeeded or requires an update.
-    ///   - refreshDependency: The job to be performed if the dependency is missing or needs to
-    ///   be refreshed. Must return a `RefreshResult` which can be a succesful refresh or an indication
-    ///   that the refresh itself failed. If it fails the entire task `.run` will throw a `DependencyError`
-    ///   with `.code` == `ErrorCode.failedRefresh`.
-    ///   - timeout: The maximum time the task must wait before it times out. The timeout check is
-    ///   not guaranteed for tasks, it's not safe to rely on its specific time. Proper usage is as a fail-safe
-    ///   against infinite `try -> refresh -> try` loops.
-    /// - Returns: The result of the task in the case where it succeeds.
-    internal func run<Success>(
-        task: @Sendable (_ dependency:DependencyType, _ context:RefreshContext) async throws -> (TaskResult<Success>),
-        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>)
-    ) async throws -> Success {
-        try await run(task: task, refresh: refresh, started: .init())
-    }
-
     /// This will run a dependency inside of this one.
     /// - Parameters:
     ///   - dependency: The inner dependency to run.
@@ -110,6 +82,13 @@ public actor Dependency<DependencyType: Sendable> {
         )
     }
 
+    func run<Success>(
+        task: @Sendable (_ dependency:DependencyType, _ context:RefreshContext) async throws -> (TaskResult<Success>),
+        refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> (RefreshResult<DependencyType>)
+    ) async throws -> Success {
+        try await run(task: task, refresh: refresh, started: .init())
+    }
+    
     /// The private implementation of run. The main difference is that this one doesn't set the started time.
     /// This is the entrance method of all runs, and contains the pseudo state machine that handles the
     /// running.
