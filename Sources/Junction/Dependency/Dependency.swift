@@ -97,7 +97,9 @@ public actor Dependency<DependencyType: Sendable> {
         refresh: @Sendable (_ dependency:DependencyType?, _ context:RefreshContext) async throws -> DependencyType?,
         started: Date
     ) async throws -> Success {
-        try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds)
+        while state.isRefreshsing {
+            try await Task.sleep(while: state.isRefreshsing, nanoseconds: configuration.threadSleepNanoseconds)
+        }
         try validateTaskState()
 
         guard let actualDependency = store.getLatest(),
