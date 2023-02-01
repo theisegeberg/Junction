@@ -16,6 +16,11 @@ another route which is more akin to message passing to solve the problem. The el
 of this solution is "sort of cute and fun", but it suffers from being hard to
 prove and hard to debug.
 
+While it requires a lot more code, and completely different architecture I think
+I would propose an architecture that looks more like even more asynchronous 
+message passing. Where you pass in a call, and then you're called back when
+it is completed. This would remove some of the hard to read parts in this library.
+
 ## Basic usage
 
 I'll describe via one of the tests written. Read the below code first and then
