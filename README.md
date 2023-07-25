@@ -3,23 +3,63 @@ Try - refresh - retry library.
 
 Made to withstand the hard vacuum of concurrency and remote state.
 
-I originally wrote this code in `Combine` in a library called `Sidetrack`,
-but I was delicately told that it held some race conditions I wasn't aware of.
-This is hardened somewhat, but be aware that these things are extremely hard
-to test, and the nature of a library like this means it is almost impossible
-to prove rationally. That being said I wrote a lot of tests for it, some to
-prove it empirically.
+## The problem
 
-And warning: This is purely a hobby project, I don't provide any support for it.
-Take it as it is, or roll your own. After writing it I've been inspired to pursue
-another route which is more akin to message passing to solve the problem. The elegance
-of this solution is "sort of cute and fun", but it suffers from being hard to
-prove and hard to debug.
+I wrote this code to solve a very specific problem:
+Remote authoritative state in an multi-threaded client.
 
-While it requires a lot more code, and completely different architecture I think
-I would propose an architecture that looks more like even more asynchronous 
-message passing. Where you pass in a call, and then you're called back when
-it is completed. This would remove some of the hard to read parts in this library.
+An example of this could be a remote access token that can suddenly
+go stale. Imagine having a refresh token that can be used to get
+an access token. But there's a catch: The access token can get invalidated
+and further it WILL get invalidated when you get a new access token.
+
+This is not an imagined scenario this exists in some very hardened 
+versions of OIDC.
+
+If the client runs several concurrent network requests then there
+a specific race condition can occur where two threads both perform
+a request with an invalid access token. Both will need to refresh the
+token in order to get a new access token. But the threads do not
+have any means of communication. In traditional OIDC this isn't a problem
+because you can have multiple valid access tokens. But when you can't
+the second thread will immediately invalidate the new access token 
+created by the first thread, and this dance will go on till the end
+of time. 
+
+In order to fix this I wrote a "Junction": A piece of code that
+sits in between all requests performed. It is based on the idea
+of a generic dependency. This is required to execute the network request,
+in our example it would be a string (an access token). The call
+to junction is performed via `Task.inject`. It takes two closures.
+
+The first closure utilises the dependency/access token. In practice 
+this code would live only at one place inside the networking layer.
+This closure returns a TaskResult. If the return value is:
+TaskResult.dependencyRequiresRefresh
+Then the second closure will be run. And then the first closure will
+get retried with the new refreshed dependency.
+
+The second is the code required to update the dependency. In our
+example this would be code that uses a refresh token to get an
+access token.
+
+`Task.inject` will return the final result of the request.
+
+## The magic
+
+The above may seem a bit trivial. But the magic is that all requests
+coming in while the dependency is refreshing will be put in a holding
+pattern. Also all ongoing requests that result in a required refresh
+will not result in a refresh, instead these will get requeued and run
+again.
+
+There's a strong guarantee that the refresh closure (the second closure)
+is only running on one thread at any single moment. And this is not done
+with GDC, it's done with Swifts structured concurrency.
+
+You can explore the problem this code solves further by reading 
+the Example[N].puml files.
+
 
 ## Basic usage
 
